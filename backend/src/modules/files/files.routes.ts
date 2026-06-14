@@ -16,5 +16,6 @@ router.use(requireAuth);
 
 router.post('/', upload.single('file'), asyncHandler(filesController.uploadFileHandler));
 router.get('/:id', asyncHandler(filesController.downloadFileHandler));
+router.get('/:id/thumbnail', asyncHandler(filesController.downloadThumbnailHandler));
 
 export default router;

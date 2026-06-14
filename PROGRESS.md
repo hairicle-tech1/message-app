@@ -137,7 +137,7 @@ Tracks what's been done on the Internal Messenger App, session by session.
 
 ## Next Up — Phase 3 (remaining)
 
-- [ ] Image/video thumbnails, media gallery per chat
+- [x] Image/video thumbnails, media gallery per chat
 - [ ] Link previews (OG metadata)
 - [ ] Signal Protocol key registration + real E2E encryption
 
@@ -172,3 +172,34 @@ Tracks what's been done on the Internal Messenger App, session by session.
 
 ### Status
 ✅ Root and frontend READMEs now reflect the actual project.
+
+---
+
+## 2026-06-15 — Phase 3: Image/video thumbnails & media gallery
+
+- Added `sharp` to the backend and a `has_thumbnail` column on `files`
+  (migration applied to the running DB + added to `db/init.sql`)
+- **Backend**: image uploads now generate a 320px webp thumbnail under
+  `uploads/thumbnails/`; `GET /api/files/:id/thumbnail` streams it
+  (404 if none, e.g. for non-images). `FileMeta` (returned from upload,
+  message send, and message history) now includes `hasThumbnail`
+- New `GET /api/conversations/:id/media` returns all `image`/`video`
+  messages + file metadata for a conversation, for the gallery view
+- **Frontend**: `useFileBlobUrl` now supports a `thumbnail` variant
+  (separate cache key) so inline image attachments load the small webp
+  instead of the full file; `MessageAttachment` renders images/videos as
+  clickable previews (video uses `preload="metadata"` for a free
+  first-frame thumbnail) that open a new `Lightbox` component (full-size
+  image or video with controls)
+- New `MediaGallery` component: a "Media" button in the thread header opens
+  a grid of all image/video attachments for the conversation, each opening
+  the same `Lightbox` on click
+- Video thumbnails are client-side only (browser-decoded first frame); true
+  server-side video frame extraction would need ffmpeg and is left for later
+- Verified end-to-end via curl: uploaded image got `hasThumbnail: true`,
+  `/api/files/:id/thumbnail` returned a valid 1x1 webp, and
+  `/api/conversations/:id/media` listed it; both apps type-check cleanly
+
+### Status
+✅ Image thumbnails + media gallery working end-to-end (backend verified via
+   curl; frontend type-checks cleanly, manual browser test pending).

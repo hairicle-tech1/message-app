@@ -44,7 +44,15 @@ export interface FileMeta {
   fileName: string;
   mimeType: string;
   sizeBytes: number;
+  hasThumbnail: boolean;
   createdAt: string;
+}
+
+export interface ConversationMediaItem {
+  messageId: string;
+  type: MessageType;
+  createdAt: string;
+  file: FileMeta;
 }
 
 export interface Message {

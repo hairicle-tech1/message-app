@@ -1,26 +1,30 @@
 import { useEffect, useState } from 'react';
-import { fetchFileBlob } from '../api/files';
+import { fetchFileBlob, fetchThumbnailBlob } from '../api/files';
+
+export type FileBlobVariant = 'original' | 'thumbnail';
 
 const blobUrlCache = new Map<string, string>();
 
-export function useFileBlobUrl(fileId: string | undefined): string | null {
-  const [url, setUrl] = useState<string | null>(fileId ? blobUrlCache.get(fileId) ?? null : null);
+export function useFileBlobUrl(fileId: string | undefined, variant: FileBlobVariant = 'original'): string | null {
+  const cacheKey = fileId ? `${variant}:${fileId}` : undefined;
+  const [url, setUrl] = useState<string | null>(cacheKey ? blobUrlCache.get(cacheKey) ?? null : null);
 
   useEffect(() => {
-    if (!fileId) return;
+    if (!fileId || !cacheKey) return;
 
-    const cached = blobUrlCache.get(fileId);
+    const cached = blobUrlCache.get(cacheKey);
     if (cached) {
       setUrl(cached);
       return;
     }
 
     let cancelled = false;
-    fetchFileBlob(fileId)
+    const fetcher = variant === 'thumbnail' ? fetchThumbnailBlob : fetchFileBlob;
+    fetcher(fileId)
       .then((blob) => {
         if (cancelled) return;
         const objectUrl = URL.createObjectURL(blob);
-        blobUrlCache.set(fileId, objectUrl);
+        blobUrlCache.set(cacheKey, objectUrl);
         setUrl(objectUrl);
       })
       .catch(() => {
@@ -30,7 +34,7 @@ export function useFileBlobUrl(fileId: string | undefined): string | null {
     return () => {
       cancelled = true;
     };
-  }, [fileId]);
+  }, [fileId, variant, cacheKey]);
 
   return url;
 }

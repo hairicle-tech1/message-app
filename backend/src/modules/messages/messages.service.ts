@@ -96,7 +96,7 @@ export async function getMessages(conversationId: string, userId: string, option
 
   const result = await db.query(
     `SELECT m.id, m.conversation_id, m.sender_id, m.type, m.ciphertext, m.reply_to_message_id, m.created_at, m.edited_at,
-            f.id AS file_id, f.file_name, f.mime_type, f.size_bytes, f.created_at AS file_created_at
+            f.id AS file_id, f.file_name, f.mime_type, f.size_bytes, f.has_thumbnail, f.created_at AS file_created_at
      FROM messages m
      LEFT JOIN files f ON f.message_id = m.id
      WHERE ${whereClause}
@@ -120,6 +120,7 @@ export async function getMessages(conversationId: string, userId: string, option
           fileName: row.file_name,
           mimeType: row.mime_type,
           sizeBytes: Number(row.size_bytes),
+          hasThumbnail: row.has_thumbnail,
           createdAt: row.file_created_at,
         }
       : undefined,

@@ -29,6 +29,7 @@ Default seeded admin: `admin@company.local` / `ChangeMe123!` (override via
 | POST | `/api/conversations` | Bearer token | Create a direct/group/channel conversation |
 | GET | `/api/conversations` | Bearer token | List conversations for the current user |
 | GET | `/api/conversations/:id` | Bearer token | Get a conversation + members |
+| GET | `/api/conversations/:id/media` | Bearer token | List image/video messages (with file metadata) for the media gallery |
 | POST | `/api/conversations/:id/members` | Bearer token | Add a member (owner/admin only) |
 | DELETE | `/api/conversations/:id/members/:userId` | Bearer token | Remove a member / leave |
 | POST | `/api/messages` | Bearer token | Send a message (fans out to recipient devices) |
@@ -36,6 +37,7 @@ Default seeded admin: `admin@company.local` / `ChangeMe123!` (override via
 | POST | `/api/messages/:id/read` | Bearer token | Mark a message read for the current device |
 | POST | `/api/files` | Bearer token | Upload a file (multipart `file` field), returns file metadata |
 | GET | `/api/files/:id` | Bearer token | Download/stream a file (requires conversation membership once attached) |
+| GET | `/api/files/:id/thumbnail` | Bearer token | Download a generated thumbnail (images only; 404 if none) |
 
 ### Socket.IO events
 
@@ -66,7 +68,8 @@ src/
     users/        admin user management
     conversations/ create/list/get conversations, manage members
     messages/      send, history, read receipts (delivery fan-out)
-    files/         file upload (multer, local disk) + authenticated download
+    files/         file upload (multer, local disk) + authenticated download,
+                   image thumbnails (sharp)
   realtime/        Socket.IO setup, presence, typing, message events
   scripts/        seed-admin
   app.ts          Express app + route wiring
@@ -83,4 +86,6 @@ db/init.sql       schema (see ../docs/database-design.md)
   recipient device)
 - Object storage backend for files (currently local disk under `UPLOADS_DIR`,
   see `docker-compose`/PLAN.md for the planned MinIO swap)
-- Link previews, image/video thumbnails
+- Link previews
+- Server-side video thumbnails (requires ffmpeg; videos currently use the
+  browser's decoded first frame as a client-side preview)

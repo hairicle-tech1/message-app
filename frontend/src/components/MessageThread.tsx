@@ -2,7 +2,9 @@ import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'r
 import * as conversationsApi from '../api/conversations';
 import * as filesApi from '../api/files';
 import * as messagesApi from '../api/messages';
-import type { Conversation, Message, MessageType } from '../api/types';
+import type { Conversation, FileMeta, Message, MessageType } from '../api/types';
+import { Lightbox } from './Lightbox';
+import { MediaGallery } from './MediaGallery';
 import { MessageAttachment } from './MessageAttachment';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
@@ -38,6 +40,8 @@ export function MessageThread({ conversationId, presence }: MessageThreadProps) 
   const [readReceipts, setReadReceipts] = useState<Record<string, Set<string>>>({});
   const [uploading, setUploading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [lightboxItem, setLightboxItem] = useState<{ file: FileMeta; type: MessageType } | null>(null);
+  const [showGallery, setShowGallery] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<number | null>(null);
   const markedReadRef = useRef<Set<string>>(new Set());
@@ -239,7 +243,12 @@ export function MessageThread({ conversationId, presence }: MessageThreadProps) 
           {other && <span className={`presence-label ${isOnline ? 'online' : 'offline'}`}>{isOnline ? 'Online' : 'Offline'}</span>}
           {isGroup && <span className="presence-label">{conversation.members?.length ?? 0} members</span>}
         </div>
-        {isTyping && <span className="typing-indicator">typing...</span>}
+        <div className="thread-header-actions">
+          {isTyping && <span className="typing-indicator">typing...</span>}
+          <button type="button" className="link-button" onClick={() => setShowGallery(true)}>
+            Media
+          </button>
+        </div>
       </header>
 
       <div className="message-list">
@@ -260,7 +269,13 @@ export function MessageThread({ conversationId, presence }: MessageThreadProps) 
               )}
               <div className={`message-bubble ${mine ? 'mine' : 'theirs'}`}>
                 {showSender && <span className="message-sender">{sender?.display_name ?? 'Unknown'}</span>}
-                {message.file && <MessageAttachment type={message.type} file={message.file} />}
+                {message.file && (
+                  <MessageAttachment
+                    type={message.type}
+                    file={message.file}
+                    onOpen={(file, type) => setLightboxItem({ file, type })}
+                  />
+                )}
                 {text && <p>{text}</p>}
                 <span className="message-meta">
                   {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -304,6 +319,18 @@ export function MessageThread({ conversationId, presence }: MessageThreadProps) 
           Send
         </button>
       </form>
+
+      {showGallery && (
+        <MediaGallery
+          conversationId={conversationId}
+          onClose={() => setShowGallery(false)}
+          onOpen={(file, type) => setLightboxItem({ file, type })}
+        />
+      )}
+
+      {lightboxItem && (
+        <Lightbox file={lightboxItem.file} type={lightboxItem.type} onClose={() => setLightboxItem(null)} />
+      )}
     </div>
   );
 }

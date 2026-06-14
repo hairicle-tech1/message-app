@@ -5,41 +5,52 @@ import { formatFileSize } from '../utils/format';
 interface MessageAttachmentProps {
   type: MessageType;
   file: FileMeta;
+  onOpen?: (file: FileMeta, type: MessageType) => void;
 }
 
-export function MessageAttachment({ type, file }: MessageAttachmentProps) {
-  const url = useFileBlobUrl(file.id);
-
-  if (!url) {
-    return <div className="attachment attachment-loading">Loading {file.fileName}...</div>;
-  }
+export function MessageAttachment({ type, file, onOpen }: MessageAttachmentProps) {
+  const previewUrl = useFileBlobUrl(file.id, file.hasThumbnail ? 'thumbnail' : 'original');
 
   if (type === 'image') {
+    if (!previewUrl) {
+      return <div className="attachment attachment-loading">Loading {file.fileName}...</div>;
+    }
     return (
-      <a href={url} target="_blank" rel="noreferrer" className="attachment attachment-image">
-        <img src={url} alt={file.fileName} />
-      </a>
+      <button type="button" className="attachment attachment-image" onClick={() => onOpen?.(file, type)}>
+        <img src={previewUrl} alt={file.fileName} />
+      </button>
     );
   }
 
   if (type === 'video') {
+    if (!previewUrl) {
+      return <div className="attachment attachment-loading">Loading {file.fileName}...</div>;
+    }
     return (
-      <video className="attachment attachment-video" src={url} controls>
-        Your browser does not support video playback.
-      </video>
+      <button type="button" className="attachment attachment-video" onClick={() => onOpen?.(file, type)}>
+        <video src={previewUrl} preload="metadata" muted />
+        <span className="attachment-play-icon">▶</span>
+      </button>
     );
   }
 
   if (type === 'audio') {
+    if (!previewUrl) {
+      return <div className="attachment attachment-loading">Loading {file.fileName}...</div>;
+    }
     return (
-      <audio className="attachment attachment-audio" src={url} controls>
+      <audio className="attachment attachment-audio" src={previewUrl} controls>
         Your browser does not support audio playback.
       </audio>
     );
   }
 
+  if (!previewUrl) {
+    return <div className="attachment attachment-loading">Loading {file.fileName}...</div>;
+  }
+
   return (
-    <a href={url} download={file.fileName} className="attachment attachment-file">
+    <a href={previewUrl} download={file.fileName} className="attachment attachment-file">
       <span className="attachment-file-icon">📎</span>
       <span className="attachment-file-meta">
         <span className="attachment-file-name">{file.fileName}</span>

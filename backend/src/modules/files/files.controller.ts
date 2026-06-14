@@ -26,3 +26,11 @@ export async function downloadFileHandler(req: Request, res: Response) {
   res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.fileName)}"`);
   createReadStream(file.storagePath).pipe(res);
 }
+
+export async function downloadThumbnailHandler(req: Request, res: Response) {
+  const thumbnailPath = await filesService.getThumbnailForDownload(req.params.id, req.user!.id);
+
+  res.setHeader('Content-Type', 'image/webp');
+  res.setHeader('Cache-Control', 'private, max-age=86400');
+  createReadStream(thumbnailPath).pipe(res);
+}

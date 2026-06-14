@@ -10,6 +10,7 @@ router.use(requireAuth);
 router.post('/', asyncHandler(conversationsController.createConversationHandler));
 router.get('/', asyncHandler(conversationsController.listConversationsHandler));
 router.get('/:id', asyncHandler(conversationsController.getConversationHandler));
+router.get('/:id/media', asyncHandler(conversationsController.getConversationMediaHandler));
 router.post('/:id/members', asyncHandler(conversationsController.addMemberHandler));
 router.delete('/:id/members/:userId', asyncHandler(conversationsController.removeMemberHandler));
 

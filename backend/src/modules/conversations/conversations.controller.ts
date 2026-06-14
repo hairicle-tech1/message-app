@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { HttpError } from '../../middleware/error.middleware.js';
+import * as filesService from '../files/files.service.js';
 import * as conversationsService from './conversations.service.js';
 
 const createConversationSchema = z.object({
@@ -28,6 +29,11 @@ export async function listConversationsHandler(req: Request, res: Response) {
 export async function getConversationHandler(req: Request, res: Response) {
   const conversation = await conversationsService.getConversationById(req.params.id, req.user!.id);
   res.json({ conversation });
+}
+
+export async function getConversationMediaHandler(req: Request, res: Response) {
+  const media = await filesService.getConversationMedia(req.params.id, req.user!.id);
+  res.json({ media });
 }
 
 export async function addMemberHandler(req: Request, res: Response) {

@@ -21,3 +21,14 @@ export async function fetchFileBlob(fileId: string): Promise<Blob> {
   }
   return res.blob();
 }
+
+export async function fetchThumbnailBlob(fileId: string): Promise<Blob> {
+  const token = getAuthToken();
+  const res = await fetch(`${API_URL}/api/files/${fileId}/thumbnail`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch thumbnail ${fileId}`);
+  }
+  return res.blob();
+}

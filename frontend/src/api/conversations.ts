@@ -1,5 +1,5 @@
 import { apiFetch } from './client';
-import type { Conversation, ConversationType, DirectoryUser } from './types';
+import type { Conversation, ConversationMediaItem, ConversationType, DirectoryUser } from './types';
 
 export function listConversations() {
   return apiFetch<{ conversations: Conversation[] }>('/api/conversations');
@@ -18,4 +18,8 @@ export function createConversation(input: { type: ConversationType; name?: strin
 
 export function listDirectory() {
   return apiFetch<{ users: DirectoryUser[] }>('/api/users/directory');
+}
+
+export function getConversationMedia(id: string) {
+  return apiFetch<{ media: ConversationMediaItem[] }>(`/api/conversations/${id}/media`);
 }

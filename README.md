@@ -13,8 +13,8 @@ for a session-by-session build log.
 |---|---|---|
 | 1 | Foundation & auth (JWT, closed registration, user directory) | ✅ |
 | 2 | Core messaging (DMs, group chats, real-time via Socket.IO, presence, typing, read receipts) | ✅ |
-| 3 | File sharing & voice notes (local disk storage) | ✅ |
-| 3 (remaining) | Thumbnails/media gallery, link previews, Signal Protocol E2E | ⏳ |
+| 3 | File sharing, voice notes, image/video thumbnails & media gallery | ✅ |
+| 3 (remaining) | Link previews, Signal Protocol E2E | ⏳ |
 | 4 | Mobile apps (React Native) | ⏳ |
 | 5 | Admin dashboard, audit logs, monitoring | ⏳ |
 
