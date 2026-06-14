@@ -140,3 +140,35 @@ Tracks what's been done on the Internal Messenger App, session by session.
 - [ ] Image/video thumbnails, media gallery per chat
 - [ ] Link previews (OG metadata)
 - [ ] Signal Protocol key registration + real E2E encryption
+
+---
+
+## 2026-06-14 — Git repo + push to GitHub
+
+- Added a root `.gitignore` (node_modules, dist, `.env`/`.env.*` except
+  `.env.example`, `backend/uploads/`, logs, editor files) and closed a gap in
+  `frontend/.gitignore` (it covered `*.local` but not `.env` directly)
+- Initialized the git repo at the project root, committed everything except
+  the gitignored secrets/build output/uploads, and pushed to
+  `https://github.com/hairicle-tech1/message-app.git` (`main` branch)
+- Verified `git status` showed no `.env` files or `backend/uploads/*` staged
+  before committing
+
+### Status
+✅ Project pushed to GitHub with `.env` files and uploaded user content
+   excluded.
+
+---
+
+## 2026-06-14 — Documentation: README overhaul
+
+- Rewrote the root [README.md](README.md): project overview, phase status
+  table, tech stack, project structure, quick start (`run.ps1` + manual
+  setup), default seeded credentials, and security notes (gitignored
+  `.env`/`uploads/`, closed registration)
+- Rewrote [frontend/README.md](frontend/README.md), replacing the generic Vite
+  template with project-specific setup, scripts, and folder structure
+- `backend/README.md` was already up to date and left unchanged
+
+### Status
+✅ Root and frontend READMEs now reflect the actual project.
