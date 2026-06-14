@@ -1,0 +1,23 @@
+# Dependencies
+**/node_modules/
+
+# Build output
+**/dist/
+
+# Environment files (never commit secrets)
+.env
+.env.*
+!**/.env.example
+
+# Uploaded user content
+backend/uploads/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea

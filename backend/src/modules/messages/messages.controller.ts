@@ -1,0 +1,37 @@
+import type { Request, Response } from 'express';
+import { z } from 'zod';
+import * as messagesService from './messages.service.js';
+
+const sendMessageSchema = z.object({
+  conversationId: z.string().uuid(),
+  type: z.enum(['text', 'image', 'video', 'audio', 'file', 'system']).optional(),
+  ciphertext: z.string().optional(),
+  replyToMessageId: z.string().uuid().optional(),
+  fileId: z.string().uuid().optional(),
+});
+
+const listMessagesSchema = z.object({
+  conversationId: z.string().uuid(),
+  before: z.string().uuid().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+});
+
+export async function sendMessageHandler(req: Request, res: Response) {
+  const body = sendMessageSchema.parse(req.body);
+  const message = await messagesService.sendMessage(req.user!.id, body);
+  res.status(201).json({ message });
+}
+
+export async function listMessagesHandler(req: Request, res: Response) {
+  const query = listMessagesSchema.parse(req.query);
+  const messages = await messagesService.getMessages(query.conversationId, req.user!.id, {
+    before: query.before,
+    limit: query.limit,
+  });
+  res.json({ messages });
+}
+
+export async function markReadHandler(req: Request, res: Response) {
+  await messagesService.markMessageRead(req.params.id, req.user!.id, req.user!.deviceId);
+  res.status(204).send();
+}

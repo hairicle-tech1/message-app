@@ -1,0 +1,21 @@
+import { apiFetch } from './client';
+import type { Conversation, ConversationType, DirectoryUser } from './types';
+
+export function listConversations() {
+  return apiFetch<{ conversations: Conversation[] }>('/api/conversations');
+}
+
+export function getConversation(id: string) {
+  return apiFetch<{ conversation: Conversation }>(`/api/conversations/${id}`);
+}
+
+export function createConversation(input: { type: ConversationType; name?: string; memberIds: string[] }) {
+  return apiFetch<{ conversation: Conversation }>('/api/conversations', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function listDirectory() {
+  return apiFetch<{ users: DirectoryUser[] }>('/api/users/directory');
+}
