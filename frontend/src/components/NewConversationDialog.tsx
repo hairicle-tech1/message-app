@@ -21,7 +21,6 @@ export function NewConversationDialog({ onCreated }: NewConversationDialogProps)
 
   useEffect(() => {
     if (!open) return;
-
     conversationsApi
       .listDirectory()
       .then(({ users }) => setUsers(users))
@@ -39,7 +38,6 @@ export function NewConversationDialog({ onCreated }: NewConversationDialogProps)
   async function startDirectConversation(userId: string) {
     setError(null);
     setCreatingId(userId);
-
     try {
       const { conversation } = await conversationsApi.createConversation({
         type: 'direct',
@@ -57,11 +55,8 @@ export function NewConversationDialog({ onCreated }: NewConversationDialogProps)
   function toggleSelected(userId: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(userId)) {
-        next.delete(userId);
-      } else {
-        next.add(userId);
-      }
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
       return next;
     });
   }
@@ -69,10 +64,8 @@ export function NewConversationDialog({ onCreated }: NewConversationDialogProps)
   async function createGroup(e: FormEvent) {
     e.preventDefault();
     if (!groupName.trim() || selectedIds.size === 0) return;
-
     setError(null);
     setCreatingGroup(true);
-
     try {
       const { conversation } = await conversationsApi.createConversation({
         type: 'group',
@@ -88,99 +81,159 @@ export function NewConversationDialog({ onCreated }: NewConversationDialogProps)
     }
   }
 
-  if (!open) {
-    return (
-      <button className="new-conversation-toggle" onClick={() => setOpen(true)}>
-        + New conversation
-      </button>
-    );
-  }
-
   return (
-    <div className="new-conversation-panel">
-      <div className="new-conversation-header">
-        <span>Start a conversation</span>
-        <button className="link-button" onClick={close}>
-          Close
-        </button>
-      </div>
+    <>
+      {/* Trigger button */}
+      <button
+        onClick={() => setOpen(true)}
+        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition-colors"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+        </svg>
+        New Conversation
+      </button>
 
-      <div className="new-conversation-tabs">
-        <button
-          type="button"
-          className={`tab-button ${mode === 'direct' ? 'active' : ''}`}
-          onClick={() => setMode('direct')}
+      {/* Modal */}
+      {open && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          onClick={close}
         >
-          Direct message
-        </button>
-        <button
-          type="button"
-          className={`tab-button ${mode === 'group' ? 'active' : ''}`}
-          onClick={() => setMode('group')}
-        >
-          Group chat
-        </button>
-      </div>
-
-      {error && <p className="auth-error">{error}</p>}
-
-      {mode === 'direct' ? (
-        <ul className="directory-list">
-          {users.map((user) => (
-            <li key={user.id}>
-              <button
-                className="directory-item"
-                onClick={() => startDirectConversation(user.id)}
-                disabled={creatingId === user.id}
-              >
-                <span className="conversation-avatar">{user.display_name.slice(0, 1).toUpperCase()}</span>
-                <span className="conversation-meta">
-                  <span className="conversation-title">{user.display_name}</span>
-                  <span className="conversation-type">@{user.username}</span>
-                </span>
-              </button>
-            </li>
-          ))}
-          {users.length === 0 && !error && <li className="conversation-list-empty">No other users found.</li>}
-        </ul>
-      ) : (
-        <form className="group-form" onSubmit={createGroup}>
-          <input
-            className="group-name-input"
-            placeholder="Group name"
-            value={groupName}
-            onChange={(e) => setGroupName(e.target.value)}
-          />
-
-          <ul className="directory-list">
-            {users.map((user) => (
-              <li key={user.id}>
-                <label className="directory-item directory-item-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.has(user.id)}
-                    onChange={() => toggleSelected(user.id)}
-                  />
-                  <span className="conversation-avatar">{user.display_name.slice(0, 1).toUpperCase()}</span>
-                  <span className="conversation-meta">
-                    <span className="conversation-title">{user.display_name}</span>
-                    <span className="conversation-type">@{user.username}</span>
-                  </span>
-                </label>
-              </li>
-            ))}
-            {users.length === 0 && !error && <li className="conversation-list-empty">No other users found.</li>}
-          </ul>
-
-          <button
-            type="submit"
-            className="group-create-button"
-            disabled={!groupName.trim() || selectedIds.size === 0 || creatingGroup}
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[80vh] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
           >
-            {creatingGroup ? 'Creating...' : `Create group${selectedIds.size ? ` (${selectedIds.size + 1} members)` : ''}`}
-          </button>
-        </form>
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-shrink-0">
+              <h2 className="font-semibold text-slate-900">Start a conversation</h2>
+              <button
+                onClick={close}
+                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
+                aria-label="Close"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex gap-1 p-3 bg-slate-50 border-b border-slate-100 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setMode('direct')}
+                className={`flex-1 py-2 px-3 rounded-xl text-sm font-semibold transition-colors ${
+                  mode === 'direct'
+                    ? 'bg-white text-indigo-600 shadow-sm border border-slate-200'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                Direct message
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('group')}
+                className={`flex-1 py-2 px-3 rounded-xl text-sm font-semibold transition-colors ${
+                  mode === 'group'
+                    ? 'bg-white text-indigo-600 shadow-sm border border-slate-200'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                Group chat
+              </button>
+            </div>
+
+            {error && (
+              <p className="mx-4 mt-3 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600 flex-shrink-0">
+                {error}
+              </p>
+            )}
+
+            {/* Direct message list */}
+            {mode === 'direct' && (
+              <ul className="overflow-y-auto flex-1 p-2">
+                {users.map((user) => (
+                  <li key={user.id}>
+                    <button
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 text-left transition-colors disabled:opacity-50"
+                      onClick={() => startDirectConversation(user.id)}
+                      disabled={creatingId === user.id}
+                    >
+                      <span className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                        {user.display_name.slice(0, 1).toUpperCase()}
+                      </span>
+                      <span className="flex flex-col min-w-0">
+                        <span className="text-sm font-semibold text-slate-800 truncate">
+                          {user.display_name}
+                        </span>
+                        <span className="text-xs text-slate-400 truncate">@{user.username}</span>
+                      </span>
+                      {creatingId === user.id && (
+                        <span className="ml-auto text-xs text-slate-400">Starting...</span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+                {users.length === 0 && !error && (
+                  <li className="text-center py-8 text-sm text-slate-400">No other users found.</li>
+                )}
+              </ul>
+            )}
+
+            {/* Group chat form */}
+            {mode === 'group' && (
+              <form className="flex flex-col min-h-0 flex-1 overflow-hidden" onSubmit={createGroup}>
+                <div className="px-4 pt-3 pb-2 flex-shrink-0">
+                  <input
+                    placeholder="Group name"
+                    value={groupName}
+                    onChange={(e) => setGroupName(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  />
+                </div>
+                <ul className="overflow-y-auto flex-1 p-2">
+                  {users.map((user) => (
+                    <li key={user.id}>
+                      <label className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 cursor-pointer transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(user.id)}
+                          onChange={() => toggleSelected(user.id)}
+                          className="w-4 h-4 rounded accent-indigo-600"
+                        />
+                        <span className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-sm font-bold flex-shrink-0">
+                          {user.display_name.slice(0, 1).toUpperCase()}
+                        </span>
+                        <span className="flex flex-col min-w-0">
+                          <span className="text-sm font-semibold text-slate-800 truncate">
+                            {user.display_name}
+                          </span>
+                          <span className="text-xs text-slate-400 truncate">@{user.username}</span>
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                  {users.length === 0 && !error && (
+                    <li className="text-center py-8 text-sm text-slate-400">No other users found.</li>
+                  )}
+                </ul>
+                <div className="p-4 border-t border-slate-100 flex-shrink-0">
+                  <button
+                    type="submit"
+                    disabled={!groupName.trim() || selectedIds.size === 0 || creatingGroup}
+                    className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl text-sm transition-colors"
+                  >
+                    {creatingGroup
+                      ? 'Creating...'
+                      : `Create group${selectedIds.size ? ` (${selectedIds.size + 1} members)` : ''}`}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
       )}
-    </div>
+    </>
   );
 }
