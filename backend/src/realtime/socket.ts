@@ -114,6 +114,35 @@ async function handleConnection(io: Server, socket: AuthedSocket) {
     },
   );
 
+  socket.on(
+    'message:edit',
+    async (
+      payload: { messageId: string; ciphertext: string },
+      callback?: (response: { ok: boolean; message?: unknown; error?: string }) => void,
+    ) => {
+      try {
+        const message = await messagesService.editMessage(payload.messageId, user.id, payload.ciphertext);
+        io.to(`conversation:${message.conversationId}`).emit('message:edited', message);
+        callback?.({ ok: true, message });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    'message:delete',
+    async (payload: { messageId: string }, callback?: (response: { ok: boolean; error?: string }) => void) => {
+      try {
+        const result = await messagesService.deleteMessage(payload.messageId, user.id);
+        io.to(`conversation:${result.conversationId}`).emit('message:deleted', result);
+        callback?.({ ok: true });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
   socket.on('disconnect', () => {
     void markUserOffline(io, user.id);
   });

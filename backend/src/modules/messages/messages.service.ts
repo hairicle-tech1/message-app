@@ -85,7 +85,7 @@ export async function getMessages(conversationId: string, userId: string, option
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 100);
 
   const params: unknown[] = [conversationId];
-  let whereClause = 'm.conversation_id = $1 AND m.deleted_at IS NULL';
+  let whereClause = 'm.conversation_id = $1';
 
   if (options.before) {
     params.push(options.before);
@@ -95,7 +95,7 @@ export async function getMessages(conversationId: string, userId: string, option
   params.push(limit);
 
   const result = await db.query(
-    `SELECT m.id, m.conversation_id, m.sender_id, m.type, m.ciphertext, m.reply_to_message_id, m.created_at, m.edited_at,
+    `SELECT m.id, m.conversation_id, m.sender_id, m.type, m.ciphertext, m.reply_to_message_id, m.created_at, m.edited_at, m.deleted_at,
             f.id AS file_id, f.file_name, f.mime_type, f.size_bytes, f.has_thumbnail, f.created_at AS file_created_at
      FROM messages m
      LEFT JOIN files f ON f.message_id = m.id
@@ -110,21 +110,77 @@ export async function getMessages(conversationId: string, userId: string, option
     conversationId: row.conversation_id,
     senderId: row.sender_id,
     type: row.type,
-    ciphertext: Buffer.from(row.ciphertext).toString('base64'),
+    ciphertext: row.deleted_at ? '' : Buffer.from(row.ciphertext).toString('base64'),
     replyToMessageId: row.reply_to_message_id,
     createdAt: row.created_at,
     editedAt: row.edited_at,
-    file: row.file_id
-      ? {
-          id: row.file_id,
-          fileName: row.file_name,
-          mimeType: row.mime_type,
-          sizeBytes: Number(row.size_bytes),
-          hasThumbnail: row.has_thumbnail,
-          createdAt: row.file_created_at,
-        }
-      : undefined,
+    deletedAt: row.deleted_at,
+    file:
+      !row.deleted_at && row.file_id
+        ? {
+            id: row.file_id,
+            fileName: row.file_name,
+            mimeType: row.mime_type,
+            sizeBytes: Number(row.size_bytes),
+            hasThumbnail: row.has_thumbnail,
+            createdAt: row.file_created_at,
+          }
+        : undefined,
   }));
+}
+
+export async function editMessage(messageId: string, userId: string, ciphertext: string) {
+  const result = await db.query<{ conversation_id: string; sender_id: string; deleted_at: string | null }>(
+    'SELECT conversation_id, sender_id, deleted_at FROM messages WHERE id = $1',
+    [messageId],
+  );
+  const message = result.rows[0];
+  if (!message) {
+    throw new HttpError(404, 'Message not found');
+  }
+  if (message.sender_id !== userId) {
+    throw new HttpError(403, 'Not authorized to edit this message');
+  }
+  if (message.deleted_at) {
+    throw new HttpError(400, 'Cannot edit a deleted message');
+  }
+
+  const ciphertextBuf = Buffer.from(ciphertext, 'base64');
+
+  const updated = await db.query<{ edited_at: string }>(
+    `UPDATE messages SET ciphertext = $1, edited_at = now() WHERE id = $2 RETURNING edited_at`,
+    [ciphertextBuf, messageId],
+  );
+  await db.query('UPDATE message_deliveries SET ciphertext = $1 WHERE message_id = $2', [ciphertextBuf, messageId]);
+
+  return {
+    id: messageId,
+    conversationId: message.conversation_id,
+    ciphertext,
+    editedAt: updated.rows[0].edited_at,
+  };
+}
+
+export async function deleteMessage(messageId: string, userId: string) {
+  const result = await db.query<{ conversation_id: string; sender_id: string }>(
+    'SELECT conversation_id, sender_id FROM messages WHERE id = $1',
+    [messageId],
+  );
+  const message = result.rows[0];
+  if (!message) {
+    throw new HttpError(404, 'Message not found');
+  }
+  if (message.sender_id !== userId) {
+    throw new HttpError(403, 'Not authorized to delete this message');
+  }
+
+  const updated = await db.query<{ deleted_at: string }>(
+    `UPDATE messages SET deleted_at = now(), ciphertext = $1 WHERE id = $2 RETURNING deleted_at`,
+    [Buffer.alloc(0), messageId],
+  );
+  await db.query('UPDATE message_deliveries SET ciphertext = $1 WHERE message_id = $2', [Buffer.alloc(0), messageId]);
+
+  return { id: messageId, conversationId: message.conversation_id, deletedAt: updated.rows[0].deleted_at };
 }
 
 export async function markMessageRead(messageId: string, userId: string, deviceId: string) {

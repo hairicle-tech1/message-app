@@ -203,3 +203,30 @@ Tracks what's been done on the Internal Messenger App, session by session.
 ### Status
 ✅ Image thumbnails + media gallery working end-to-end (backend verified via
    curl; frontend type-checks cleanly, manual browser test pending).
+
+---
+
+## 2026-06-15 — Message editing & deletion
+
+- **Backend**: `PATCH /api/messages/:id` edits a message's `ciphertext` and sets
+  `edited_at` (own messages only, blocked once deleted); `DELETE /api/messages/:id`
+  soft-deletes a message (`deleted_at`) and clears its `ciphertext` and the
+  duplicated `message_deliveries` rows. New socket events `message:edit` /
+  `message:delete` (client -> server, ack callback) broadcast `message:edited`
+  / `message:deleted` to the conversation room
+- `GET /api/messages` no longer filters out deleted messages — it returns them
+  with empty `ciphertext`, no `file`, and `deletedAt` set, so a WhatsApp-style
+  "This message was deleted" placeholder can be shown to everyone
+- **Frontend**: hover-revealed edit/delete buttons on your own messages;
+  inline edit form (input + Save/Cancel) replaces the message text; an
+  "(edited)" label appears next to the timestamp when `editedAt` is set;
+  deleting (after a confirm prompt) replaces the bubble content with an
+  italic "This message was deleted" placeholder for all members in real time
+- Verified end-to-end via curl: edit updates `ciphertext`/`editedAt`, editing
+  after delete returns 400, a non-owner editing/deleting another user's
+  message gets 403, and a deleted message shows up in history with empty
+  ciphertext and `deletedAt` set; both apps type-check cleanly
+
+### Status
+✅ Message editing & deletion working end-to-end (backend verified via curl;
+   frontend type-checks cleanly, manual browser test pending).

@@ -16,6 +16,10 @@ const listMessagesSchema = z.object({
   limit: z.coerce.number().int().positive().max(100).optional(),
 });
 
+const editMessageSchema = z.object({
+  ciphertext: z.string(),
+});
+
 export async function sendMessageHandler(req: Request, res: Response) {
   const body = sendMessageSchema.parse(req.body);
   const message = await messagesService.sendMessage(req.user!.id, body);
@@ -34,4 +38,15 @@ export async function listMessagesHandler(req: Request, res: Response) {
 export async function markReadHandler(req: Request, res: Response) {
   await messagesService.markMessageRead(req.params.id, req.user!.id, req.user!.deviceId);
   res.status(204).send();
+}
+
+export async function editMessageHandler(req: Request, res: Response) {
+  const body = editMessageSchema.parse(req.body);
+  const message = await messagesService.editMessage(req.params.id, req.user!.id, body.ciphertext);
+  res.json({ message });
+}
+
+export async function deleteMessageHandler(req: Request, res: Response) {
+  const result = await messagesService.deleteMessage(req.params.id, req.user!.id);
+  res.json({ message: result });
 }

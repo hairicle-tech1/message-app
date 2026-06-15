@@ -64,7 +64,21 @@ export interface Message {
   replyToMessageId: string | null;
   createdAt: string;
   editedAt?: string | null;
+  deletedAt?: string | null;
   file?: FileMeta;
+}
+
+export interface MessageEditResult {
+  id: string;
+  conversationId: string;
+  ciphertext: string;
+  editedAt: string;
+}
+
+export interface MessageDeleteResult {
+  id: string;
+  conversationId: string;
+  deletedAt: string;
 }
 
 export interface LoginResponse {

@@ -35,6 +35,8 @@ Default seeded admin: `admin@company.local` / `ChangeMe123!` (override via
 | POST | `/api/messages` | Bearer token | Send a message (fans out to recipient devices) |
 | GET | `/api/messages?conversationId=&before=&limit=` | Bearer token | Paginated message history |
 | POST | `/api/messages/:id/read` | Bearer token | Mark a message read for the current device |
+| PATCH | `/api/messages/:id` | Bearer token | Edit own message (`{ ciphertext }`); fails if deleted |
+| DELETE | `/api/messages/:id` | Bearer token | Soft-delete own message (clears ciphertext, shows as "deleted" to all members) |
 | POST | `/api/files` | Bearer token | Upload a file (multipart `file` field), returns file metadata |
 | GET | `/api/files/:id` | Bearer token | Download/stream a file (requires conversation membership once attached) |
 | GET | `/api/files/:id/thumbnail` | Bearer token | Download a generated thumbnail (images only; 404 if none) |
@@ -49,11 +51,15 @@ a room per conversation the user belongs to.
 | `typing:start` / `typing:stop` | `{ conversationId }` | Broadcast to other members |
 | `message:send` | `{ conversationId, type?, ciphertext?, replyToMessageId?, fileId? }` | Ack via callback, broadcasts `message:new` |
 | `message:read` | `{ messageId }` | Ack via callback, broadcasts `message:read` |
+| `message:edit` | `{ messageId, ciphertext }` | Ack via callback, broadcasts `message:edited` |
+| `message:delete` | `{ messageId }` | Ack via callback, broadcasts `message:deleted` |
 
 | Event (server -> client) | Payload |
 |---|---|
 | `message:new` | the created message |
 | `message:read` | `{ messageId, userId, deviceId }` |
+| `message:edited` | `{ id, conversationId, ciphertext, editedAt }` |
+| `message:deleted` | `{ id, conversationId, deletedAt }` |
 | `typing:start` / `typing:stop` | `{ conversationId, userId }` |
 | `presence:update` | `{ userId, status: 'online' \| 'offline' }` |
 

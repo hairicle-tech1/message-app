@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'r
 import * as conversationsApi from '../api/conversations';
 import * as filesApi from '../api/files';
 import * as messagesApi from '../api/messages';
-import type { Conversation, FileMeta, Message, MessageType } from '../api/types';
+import type { Conversation, FileMeta, Message, MessageDeleteResult, MessageEditResult, MessageType } from '../api/types';
 import { Lightbox } from './Lightbox';
 import { MediaGallery } from './MediaGallery';
 import { MessageAttachment } from './MessageAttachment';
@@ -42,6 +42,8 @@ export function MessageThread({ conversationId, presence }: MessageThreadProps) 
   const [isRecording, setIsRecording] = useState(false);
   const [lightboxItem, setLightboxItem] = useState<{ file: FileMeta; type: MessageType } | null>(null);
   const [showGallery, setShowGallery] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<number | null>(null);
   const markedReadRef = useRef<Set<string>>(new Set());
@@ -100,16 +102,34 @@ export function MessageThread({ conversationId, presence }: MessageThreadProps) 
       });
     };
 
+    const handleMessageEdited = (payload: MessageEditResult) => {
+      if (payload.conversationId !== conversationId) return;
+      setMessages((prev) =>
+        prev.map((m) => (m.id === payload.id ? { ...m, ciphertext: payload.ciphertext, editedAt: payload.editedAt } : m)),
+      );
+    };
+
+    const handleMessageDeleted = (payload: MessageDeleteResult) => {
+      if (payload.conversationId !== conversationId) return;
+      setMessages((prev) =>
+        prev.map((m) => (m.id === payload.id ? { ...m, ciphertext: '', file: undefined, deletedAt: payload.deletedAt } : m)),
+      );
+    };
+
     socket.on('message:new', handleNewMessage);
     socket.on('typing:start', handleTypingStart);
     socket.on('typing:stop', handleTypingStop);
     socket.on('message:read', handleMessageRead);
+    socket.on('message:edited', handleMessageEdited);
+    socket.on('message:deleted', handleMessageDeleted);
 
     return () => {
       socket.off('message:new', handleNewMessage);
       socket.off('typing:start', handleTypingStart);
       socket.off('typing:stop', handleTypingStop);
       socket.off('message:read', handleMessageRead);
+      socket.off('message:edited', handleMessageEdited);
+      socket.off('message:deleted', handleMessageDeleted);
     };
   }, [socket, conversationId, user]);
 
@@ -156,6 +176,47 @@ export function MessageThread({ conversationId, presence }: MessageThreadProps) 
     } else {
       const { message } = await messagesApi.sendMessage(payload);
       setMessages((prev) => addMessage(prev, message));
+    }
+  }
+
+  function startEdit(message: Message) {
+    setEditingMessageId(message.id);
+    setEditingText(decodeMessageText(message.ciphertext));
+  }
+
+  function cancelEdit() {
+    setEditingMessageId(null);
+    setEditingText('');
+  }
+
+  async function submitEdit(messageId: string) {
+    const ciphertext = encodeMessageText(editingText.trim());
+    cancelEdit();
+
+    if (socket) {
+      socket.emit('message:edit', { messageId, ciphertext }, (res: { ok: boolean; error?: string }) => {
+        if (!res.ok) window.alert(res.error ?? 'Failed to edit message');
+      });
+    } else {
+      const { message } = await messagesApi.editMessage(messageId, ciphertext);
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, ciphertext: message.ciphertext, editedAt: message.editedAt } : m)),
+      );
+    }
+  }
+
+  async function handleDelete(messageId: string) {
+    if (!window.confirm('Delete this message?')) return;
+
+    if (socket) {
+      socket.emit('message:delete', { messageId }, (res: { ok: boolean; error?: string }) => {
+        if (!res.ok) window.alert(res.error ?? 'Failed to delete message');
+      });
+    } else {
+      const { message } = await messagesApi.deleteMessage(messageId);
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, ciphertext: '', file: undefined, deletedAt: message.deletedAt } : m)),
+      );
     }
   }
 
@@ -260,6 +321,8 @@ export function MessageThread({ conversationId, presence }: MessageThreadProps) 
           const sender = membersById.get(message.senderId);
           const showSender = isGroup && !mine && messages[index - 1]?.senderId !== message.senderId;
 
+          const isEditing = editingMessageId === message.id;
+
           return (
             <div key={message.id} className={`message-row ${mine ? 'mine' : 'theirs'}`}>
               {isGroup && !mine && (
@@ -267,18 +330,57 @@ export function MessageThread({ conversationId, presence }: MessageThreadProps) 
                   {(sender?.display_name ?? '?').slice(0, 1).toUpperCase()}
                 </span>
               )}
+              {mine && !isEditing && !message.deletedAt && (
+                <div className="message-actions">
+                  <button type="button" className="message-action-button" title="Edit" onClick={() => startEdit(message)}>
+                    ✏️
+                  </button>
+                  <button type="button" className="message-action-button" title="Delete" onClick={() => handleDelete(message.id)}>
+                    🗑️
+                  </button>
+                </div>
+              )}
               <div className={`message-bubble ${mine ? 'mine' : 'theirs'}`}>
                 {showSender && <span className="message-sender">{sender?.display_name ?? 'Unknown'}</span>}
-                {message.file && (
-                  <MessageAttachment
-                    type={message.type}
-                    file={message.file}
-                    onOpen={(file, type) => setLightboxItem({ file, type })}
-                  />
+                {message.deletedAt ? (
+                  <p className="message-deleted">This message was deleted</p>
+                ) : (
+                  <>
+                    {message.file && (
+                      <MessageAttachment
+                        type={message.type}
+                        file={message.file}
+                        onOpen={(file, type) => setLightboxItem({ file, type })}
+                      />
+                    )}
+                    {isEditing ? (
+                      <form
+                        className="message-edit-form"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          submitEdit(message.id);
+                        }}
+                      >
+                        <input
+                          value={editingText}
+                          onChange={(e) => setEditingText(e.target.value)}
+                          autoFocus
+                        />
+                        <div className="message-edit-actions">
+                          <button type="submit">Save</button>
+                          <button type="button" onClick={cancelEdit}>
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      text && <p>{text}</p>
+                    )}
+                  </>
                 )}
-                {text && <p>{text}</p>}
                 <span className="message-meta">
                   {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {message.editedAt && !message.deletedAt && ' (edited)'}
                   {mine && read && ' ✓✓'}
                 </span>
               </div>

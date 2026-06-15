@@ -1,5 +1,5 @@
 import { apiFetch } from './client';
-import type { Message, MessageType } from './types';
+import type { Message, MessageDeleteResult, MessageEditResult, MessageType } from './types';
 
 export function listMessages(conversationId: string, before?: string) {
   const params = new URLSearchParams({ conversationId });
@@ -24,4 +24,17 @@ export function sendMessage(input: {
 
 export function markMessageRead(messageId: string) {
   return apiFetch<void>(`/api/messages/${messageId}/read`, { method: 'POST' });
+}
+
+export function editMessage(messageId: string, ciphertext: string) {
+  return apiFetch<{ message: MessageEditResult }>(`/api/messages/${messageId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ ciphertext }),
+  });
+}
+
+export function deleteMessage(messageId: string) {
+  return apiFetch<{ message: MessageDeleteResult }>(`/api/messages/${messageId}`, {
+    method: 'DELETE',
+  });
 }
