@@ -156,21 +156,117 @@ export const openApiSpec = {
         },
         responses: {
           200: {
-            description: 'Login successful',
+            description: 'Login successful OR 2FA required',
             content: {
               'application/json': {
                 schema: {
-                  type: 'object',
-                  properties: {
-                    token: { type: 'string' },
-                    deviceId: { type: 'string' },
-                    user: { $ref: '#/components/schemas/User' },
-                  },
+                  oneOf: [
+                    {
+                      title: 'Success',
+                      type: 'object',
+                      properties: {
+                        requiresTotp: { type: 'boolean', enum: [false] },
+                        token: { type: 'string' },
+                        deviceId: { type: 'string' },
+                        user: { $ref: '#/components/schemas/User' },
+                      },
+                    },
+                    {
+                      title: '2FA required',
+                      type: 'object',
+                      properties: {
+                        requiresTotp: { type: 'boolean', enum: [true] },
+                        totpToken: { type: 'string', description: '5-minute token to pass to POST /api/auth/login/totp' },
+                      },
+                    },
+                  ],
                 },
               },
             },
           },
           401: { description: 'Invalid credentials' },
+        },
+      },
+    },
+    '/api/auth/login/totp': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Complete login with TOTP code (2FA second step)',
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['totpToken', 'code'],
+                properties: {
+                  totpToken: { type: 'string', description: 'Token returned by POST /api/auth/login when requiresTotp=true' },
+                  code: { type: 'string', example: '123456', description: '6-digit TOTP code from authenticator app' },
+                  deviceName: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: 'Full JWT issued — same shape as successful /login' },
+          401: { description: 'Invalid or expired TOTP session token, or wrong code' },
+        },
+      },
+    },
+    '/api/auth/totp/setup': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Generate a new TOTP secret and QR code',
+        description: 'Saves the secret to the account (not yet active). Call POST /api/auth/totp/enable with a valid code to activate.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Setup data for authenticator app',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    secret: { type: 'string', description: 'Base32 secret (show to user as backup)' },
+                    otpauthUrl: { type: 'string', description: 'otpauth:// URI for manual entry' },
+                    qrCodeDataUrl: { type: 'string', description: 'data:image/png;base64,... QR code to scan' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/auth/totp/enable': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Enable 2FA by confirming a valid TOTP code',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['code'], properties: { code: { type: 'string', example: '123456' } } } } },
+        },
+        responses: {
+          200: { description: '2FA enabled — returns { totpEnabled: true }' },
+          400: { description: 'Setup not started or invalid code' },
+        },
+      },
+    },
+    '/api/auth/totp': {
+      delete: {
+        tags: ['Auth'],
+        summary: 'Disable 2FA (requires current TOTP code to confirm)',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['code'], properties: { code: { type: 'string', example: '123456' } } } } },
+        },
+        responses: {
+          200: { description: '2FA disabled — returns { totpEnabled: false }' },
+          400: { description: '2FA not enabled or invalid code' },
         },
       },
     },

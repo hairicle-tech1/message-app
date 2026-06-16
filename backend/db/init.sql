@@ -24,6 +24,8 @@ CREATE TABLE users (
     password_hash   TEXT,
     status          user_status NOT NULL DEFAULT 'active',
     last_seen_at    TIMESTAMPTZ,
+    totp_secret     TEXT,
+    totp_enabled    BOOLEAN NOT NULL DEFAULT FALSE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
