@@ -417,8 +417,49 @@ export const openApiSpec = {
       post: {
         tags: ['Messages'],
         summary: 'Mark a message as read for the current device',
+        security: [{ bearerAuth: [] }],
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
         responses: { 204: { description: 'Marked read' } },
+      },
+    },
+    '/api/messages/{id}/receipts': {
+      get: {
+        tags: ['Messages'],
+        summary: 'Get read receipts for a message',
+        description:
+          'Returns the list of conversation members (other than the sender) who have read this message, and when. Requester must be a member of the conversation.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: {
+          200: {
+            description: 'Read receipt list',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    receipts: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          userId: { type: 'string', format: 'uuid' },
+                          username: { type: 'string' },
+                          displayName: { type: 'string' },
+                          avatarUrl: { type: 'string', nullable: true },
+                          readAt: { type: 'string', format: 'date-time' },
+                        },
+                      },
+                    },
+                    memberCount: { type: 'integer', description: 'Total conversation member count' },
+                  },
+                },
+              },
+            },
+          },
+          403: { description: 'Not a member of this conversation' },
+          404: { description: 'Message not found' },
+        },
       },
     },
     '/api/messages/{id}': {

@@ -10,6 +10,7 @@ router.use(requireAuth);
 router.post('/', asyncHandler(messagesController.sendMessageHandler));
 router.get('/', asyncHandler(messagesController.listMessagesHandler));
 router.post('/:id/read', asyncHandler(messagesController.markReadHandler));
+router.get('/:id/receipts', asyncHandler(messagesController.getReceiptsHandler));
 router.patch('/:id', asyncHandler(messagesController.editMessageHandler));
 router.delete('/:id', asyncHandler(messagesController.deleteMessageHandler));
 

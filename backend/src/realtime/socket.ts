@@ -98,20 +98,17 @@ async function handleConnection(io: Server, socket: AuthedSocket) {
     'message:read',
     async (payload: { messageId: string }, callback?: (response: { ok: boolean; error?: string }) => void) => {
       try {
-        await messagesService.markMessageRead(payload.messageId, user.id, user.deviceId);
-
-        const result = await db.query<{ conversation_id: string }>(
-          'SELECT conversation_id FROM messages WHERE id = $1',
-          [payload.messageId],
+        const { conversationId, readAt } = await messagesService.markMessageRead(
+          payload.messageId,
+          user.id,
+          user.deviceId,
         );
-        const conversationId = result.rows[0]?.conversation_id;
-        if (conversationId) {
-          io.to(`conversation:${conversationId}`).emit('message:read', {
-            messageId: payload.messageId,
-            userId: user.id,
-            deviceId: user.deviceId,
-          });
-        }
+        io.to(`conversation:${conversationId}`).emit('message:read', {
+          messageId: payload.messageId,
+          userId: user.id,
+          deviceId: user.deviceId,
+          readAt,
+        });
 
         callback?.({ ok: true });
       } catch (err) {

@@ -50,3 +50,8 @@ export async function deleteMessageHandler(req: Request, res: Response) {
   const result = await messagesService.deleteMessage(req.params.id, req.user!.id);
   res.json({ message: result });
 }
+
+export async function getReceiptsHandler(req: Request, res: Response) {
+  const { receipts, memberCount } = await messagesService.getMessageReceipts(req.params.id, req.user!.id);
+  res.json({ receipts, memberCount });
+}

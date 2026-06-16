@@ -183,7 +183,69 @@ export async function deleteMessage(messageId: string, userId: string) {
   return { id: messageId, conversationId: message.conversation_id, deletedAt: updated.rows[0].deleted_at };
 }
 
-export async function markMessageRead(messageId: string, userId: string, deviceId: string) {
+export interface ReadReceipt {
+  userId: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  readAt: string;
+}
+
+export async function getMessageReceipts(messageId: string, requesterId: string): Promise<{
+  receipts: ReadReceipt[];
+  memberCount: number;
+}> {
+  // Verify message exists and requester is a member of its conversation
+  const msgResult = await db.query<{ conversation_id: string; sender_id: string }>(
+    'SELECT conversation_id, sender_id FROM messages WHERE id = $1',
+    [messageId],
+  );
+  const msg = msgResult.rows[0];
+  if (!msg) throw new HttpError(404, 'Message not found');
+  await assertMember(msg.conversation_id, requesterId);
+
+  // One receipt per user — use the earliest read_at across their devices
+  const receiptsResult = await db.query<{
+    user_id: string;
+    username: string;
+    display_name: string;
+    avatar_url: string | null;
+    read_at: string;
+  }>(
+    `SELECT u.id AS user_id, u.username, u.display_name, u.avatar_url,
+            MIN(md.read_at) AS read_at
+     FROM message_deliveries md
+     JOIN user_devices ud ON ud.id = md.recipient_device_id
+     JOIN users u ON u.id = ud.user_id
+     WHERE md.message_id = $1 AND md.status = 'read' AND u.id != $2
+     GROUP BY u.id, u.username, u.display_name, u.avatar_url
+     ORDER BY MIN(md.read_at) ASC`,
+    [messageId, msg.sender_id],
+  );
+
+  const memberCountResult = await db.query<{ count: string }>(
+    'SELECT COUNT(*) AS count FROM conversation_members WHERE conversation_id = $1',
+    [msg.conversation_id],
+  );
+  const memberCount = Number(memberCountResult.rows[0]?.count ?? 0);
+
+  return {
+    receipts: receiptsResult.rows.map((r) => ({
+      userId: r.user_id,
+      username: r.username,
+      displayName: r.display_name,
+      avatarUrl: r.avatar_url,
+      readAt: r.read_at,
+    })),
+    memberCount,
+  };
+}
+
+export async function markMessageRead(
+  messageId: string,
+  userId: string,
+  deviceId: string,
+): Promise<{ conversationId: string; readAt: string }> {
   const result = await db.query<{ conversation_id: string }>(
     'SELECT conversation_id FROM messages WHERE id = $1',
     [messageId],
@@ -195,9 +257,10 @@ export async function markMessageRead(messageId: string, userId: string, deviceI
 
   await assertMember(message.conversation_id, userId);
 
-  await db.query(
+  const updated = await db.query<{ read_at: string }>(
     `UPDATE message_deliveries SET status = 'read', read_at = now()
-     WHERE message_id = $1 AND recipient_device_id = $2 AND status != 'read'`,
+     WHERE message_id = $1 AND recipient_device_id = $2 AND status != 'read'
+     RETURNING read_at`,
     [messageId, deviceId],
   );
 
@@ -206,4 +269,7 @@ export async function markMessageRead(messageId: string, userId: string, deviceI
      WHERE conversation_id = $2 AND user_id = $3`,
     [messageId, message.conversation_id, userId],
   );
+
+  const readAt = updated.rows[0]?.read_at ?? new Date().toISOString();
+  return { conversationId: message.conversation_id, readAt };
 }
