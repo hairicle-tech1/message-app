@@ -251,3 +251,104 @@ export async function getMuteStatus(conversationId: string, userId: string) {
   const isMuted = mutedUntil !== null && new Date(mutedUntil) > new Date();
   return { conversationId, mutedUntil, isMuted };
 }
+
+export interface PinnedMessage {
+  id: string;
+  conversationId: string;
+  messageId: string;
+  pinnedBy: string;
+  pinnedByUsername: string;
+  pinnedByDisplayName: string;
+  pinnedAt: string;
+  message: {
+    senderId: string;
+    senderUsername: string;
+    senderDisplayName: string;
+    type: string;
+    ciphertext: string;
+    createdAt: string;
+  };
+}
+
+export async function listPinnedMessages(conversationId: string, userId: string): Promise<PinnedMessage[]> {
+  await assertMember(conversationId, userId);
+
+  const result = await db.query<{
+    id: string;
+    conversation_id: string;
+    message_id: string;
+    pinned_by: string;
+    pinned_by_username: string;
+    pinned_by_display_name: string;
+    pinned_at: string;
+    sender_id: string;
+    sender_username: string;
+    sender_display_name: string;
+    type: string;
+    ciphertext: Buffer;
+    created_at: string;
+  }>(
+    `SELECT pm.id, pm.conversation_id, pm.message_id, pm.pinned_by, pm.pinned_at,
+            up.username AS pinned_by_username, up.display_name AS pinned_by_display_name,
+            m.sender_id, m.type, m.ciphertext, m.created_at,
+            us.username AS sender_username, us.display_name AS sender_display_name
+     FROM pinned_messages pm
+     JOIN messages m ON m.id = pm.message_id
+     JOIN users up ON up.id = pm.pinned_by
+     JOIN users us ON us.id = m.sender_id
+     WHERE pm.conversation_id = $1
+     ORDER BY pm.pinned_at DESC`,
+    [conversationId],
+  );
+
+  return result.rows.map((r) => ({
+    id: r.id,
+    conversationId: r.conversation_id,
+    messageId: r.message_id,
+    pinnedBy: r.pinned_by,
+    pinnedByUsername: r.pinned_by_username,
+    pinnedByDisplayName: r.pinned_by_display_name,
+    pinnedAt: r.pinned_at,
+    message: {
+      senderId: r.sender_id,
+      senderUsername: r.sender_username,
+      senderDisplayName: r.sender_display_name,
+      type: r.type,
+      ciphertext: Buffer.from(r.ciphertext).toString('base64'),
+      createdAt: r.created_at,
+    },
+  }));
+}
+
+export async function pinMessage(conversationId: string, messageId: string, userId: string): Promise<PinnedMessage> {
+  await assertMember(conversationId, userId);
+
+  // Verify message belongs to this conversation
+  const msgCheck = await db.query<{ id: string }>(
+    'SELECT id FROM messages WHERE id = $1 AND conversation_id = $2',
+    [messageId, conversationId],
+  );
+  if (!msgCheck.rows[0]) throw new HttpError(404, 'Message not found in this conversation');
+
+  await db.query(
+    `INSERT INTO pinned_messages (conversation_id, message_id, pinned_by)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (conversation_id, message_id) DO NOTHING`,
+    [conversationId, messageId, userId],
+  );
+
+  const pins = await listPinnedMessages(conversationId, userId);
+  const pin = pins.find((p) => p.messageId === messageId);
+  if (!pin) throw new HttpError(500, 'Failed to retrieve pinned message');
+  return pin;
+}
+
+export async function unpinMessage(conversationId: string, messageId: string, userId: string): Promise<void> {
+  await assertMember(conversationId, userId);
+
+  const result = await db.query(
+    'DELETE FROM pinned_messages WHERE conversation_id = $1 AND message_id = $2',
+    [conversationId, messageId],
+  );
+  if (result.rowCount === 0) throw new HttpError(404, 'Message is not pinned');
+}

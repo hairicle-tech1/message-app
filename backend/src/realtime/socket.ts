@@ -5,7 +5,7 @@ import { db } from '../config/db.js';
 import { env } from '../config/env.js';
 import { redis } from '../config/redis.js';
 import type { AuthUser } from '../middleware/auth.middleware.js';
-import { assertMember } from '../modules/conversations/conversations.service.js';
+import { assertMember, pinMessage, unpinMessage } from '../modules/conversations/conversations.service.js';
 import * as messagesService from '../modules/messages/messages.service.js';
 
 interface AuthedSocket extends Socket {
@@ -177,6 +177,42 @@ async function handleConnection(io: Server, socket: AuthedSocket) {
           messageId: payload.messageId,
           userId: user.id,
           emoji: payload.emoji,
+        });
+        callback?.({ ok: true });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    'message:pin',
+    async (
+      payload: { conversationId: string; messageId: string },
+      callback?: (response: { ok: boolean; pin?: unknown; error?: string }) => void,
+    ) => {
+      try {
+        const pin = await pinMessage(payload.conversationId, payload.messageId, user.id);
+        io.to(`conversation:${payload.conversationId}`).emit('message:pinned', pin);
+        callback?.({ ok: true, pin });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    'message:unpin',
+    async (
+      payload: { conversationId: string; messageId: string },
+      callback?: (response: { ok: boolean; error?: string }) => void,
+    ) => {
+      try {
+        await unpinMessage(payload.conversationId, payload.messageId, user.id);
+        io.to(`conversation:${payload.conversationId}`).emit('message:unpinned', {
+          conversationId: payload.conversationId,
+          messageId: payload.messageId,
+          unpinnedBy: user.id,
         });
         callback?.({ ok: true });
       } catch (err) {

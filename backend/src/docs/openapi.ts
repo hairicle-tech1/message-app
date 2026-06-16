@@ -404,6 +404,88 @@ export const openApiSpec = {
       },
     },
 
+    '/api/conversations/{id}/pins': {
+      get: {
+        tags: ['Conversations'],
+        summary: 'List pinned messages in a conversation',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: {
+          200: {
+            description: 'List of pinned messages ordered by most recently pinned',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    pins: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'string', format: 'uuid' },
+                          messageId: { type: 'string', format: 'uuid' },
+                          pinnedBy: { type: 'string', format: 'uuid' },
+                          pinnedByUsername: { type: 'string' },
+                          pinnedByDisplayName: { type: 'string' },
+                          pinnedAt: { type: 'string', format: 'date-time' },
+                          message: {
+                            type: 'object',
+                            properties: {
+                              senderId: { type: 'string', format: 'uuid' },
+                              senderUsername: { type: 'string' },
+                              senderDisplayName: { type: 'string' },
+                              type: { type: 'string' },
+                              ciphertext: { type: 'string' },
+                              createdAt: { type: 'string', format: 'date-time' },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      post: {
+        tags: ['Conversations'],
+        summary: 'Pin a message in a conversation (any member)',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { type: 'object', required: ['messageId'], properties: { messageId: { type: 'string', format: 'uuid' } } },
+            },
+          },
+        },
+        responses: {
+          201: { description: 'Message pinned — returns { pin }' },
+          404: { description: 'Message not found in this conversation' },
+          403: { description: 'Not a member of this conversation' },
+        },
+      },
+    },
+    '/api/conversations/{id}/pins/{messageId}': {
+      delete: {
+        tags: ['Conversations'],
+        summary: 'Unpin a message',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'messageId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          204: { description: 'Unpinned' },
+          404: { description: 'Message is not pinned' },
+        },
+      },
+    },
+
     // ── Messages ─────────────────────────────────────────────────────────────
     '/api/messages': {
       post: {

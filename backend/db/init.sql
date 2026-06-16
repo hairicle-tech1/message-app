@@ -132,6 +132,19 @@ CREATE TABLE message_deliveries (
 
 CREATE INDEX idx_message_deliveries_recipient ON message_deliveries(recipient_device_id, status);
 
+-- Pinned messages
+
+CREATE TABLE pinned_messages (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    message_id      UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    pinned_by       UUID NOT NULL REFERENCES users(id),
+    pinned_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (conversation_id, message_id)
+);
+
+CREATE INDEX idx_pinned_messages_conversation_id ON pinned_messages(conversation_id, pinned_at DESC);
+
 -- Message reactions
 
 CREATE TABLE message_reactions (

@@ -17,5 +17,8 @@ router.delete('/:id/members/:userId', asyncHandler(conversationsController.remov
 router.get('/:id/mute', asyncHandler(conversationsController.getMuteStatusHandler));
 router.put('/:id/mute', asyncHandler(conversationsController.muteConversationHandler));
 router.delete('/:id/mute', asyncHandler(conversationsController.unmuteConversationHandler));
+router.get('/:id/pins', asyncHandler(conversationsController.listPinnedMessagesHandler));
+router.post('/:id/pins', asyncHandler(conversationsController.pinMessageHandler));
+router.delete('/:id/pins/:messageId', asyncHandler(conversationsController.unpinMessageHandler));
 
 export default router;

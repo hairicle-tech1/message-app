@@ -75,3 +75,21 @@ export async function getMuteStatusHandler(req: Request, res: Response) {
   const result = await conversationsService.getMuteStatus(req.params.id, req.user!.id);
   res.json(result);
 }
+
+const pinMessageSchema = z.object({ messageId: z.string().uuid() });
+
+export async function listPinnedMessagesHandler(req: Request, res: Response) {
+  const pins = await conversationsService.listPinnedMessages(req.params.id, req.user!.id);
+  res.json({ pins });
+}
+
+export async function pinMessageHandler(req: Request, res: Response) {
+  const { messageId } = pinMessageSchema.parse(req.body);
+  const pin = await conversationsService.pinMessage(req.params.id, messageId, req.user!.id);
+  res.status(201).json({ pin });
+}
+
+export async function unpinMessageHandler(req: Request, res: Response) {
+  await conversationsService.unpinMessage(req.params.id, req.params.messageId, req.user!.id);
+  res.status(204).send();
+}
