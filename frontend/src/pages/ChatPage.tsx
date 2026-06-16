@@ -25,6 +25,12 @@ export function ChatPage() {
   useEffect(() => {
     if (!socket) return;
 
+    const handlePresenceInit = (payload: { onlineUserIds: string[] }) => {
+      const snapshot: Record<string, 'online' | 'offline'> = {};
+      for (const id of payload.onlineUserIds) snapshot[id] = 'online';
+      setPresence(snapshot);
+    };
+
     const handlePresence = (payload: { userId: string; status: 'online' | 'offline' }) => {
       setPresence((prev) => ({ ...prev, [payload.userId]: payload.status }));
     };
@@ -40,12 +46,22 @@ export function ChatPage() {
       });
     };
 
+    const requestPresence = () => socket.emit('presence:get');
+
+    socket.on('presence:init', handlePresenceInit);
     socket.on('presence:update', handlePresence);
     socket.on('message:new', handleNewMessage);
+    socket.on('connect', requestPresence);
+
+    if (socket.connected) {
+      requestPresence();
+    }
 
     return () => {
+      socket.off('presence:init', handlePresenceInit);
       socket.off('presence:update', handlePresence);
       socket.off('message:new', handleNewMessage);
+      socket.off('connect', requestPresence);
     };
   }, [socket]);
 
