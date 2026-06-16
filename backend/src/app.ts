@@ -1,6 +1,8 @@
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
+import swaggerUi from 'swagger-ui-express';
+import { openApiSpec } from './docs/openapi.js';
 import { errorHandler, notFoundHandler } from './middleware/error.middleware.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import conversationsRoutes from './modules/conversations/conversations.routes.js';
@@ -10,9 +12,12 @@ import usersRoutes from './modules/users/users.routes.js';
 
 export const app = express();
 
-app.use(helmet());
+// Disable CSP for Swagger UI (it loads inline scripts)
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
 app.use(express.json());
+
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openApiSpec));
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
