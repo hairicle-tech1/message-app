@@ -96,7 +96,19 @@ export async function getMessages(conversationId: string, userId: string, option
 
   const result = await db.query(
     `SELECT m.id, m.conversation_id, m.sender_id, m.type, m.ciphertext, m.reply_to_message_id, m.created_at, m.edited_at, m.deleted_at,
-            f.id AS file_id, f.file_name, f.mime_type, f.size_bytes, f.has_thumbnail, f.created_at AS file_created_at
+            f.id AS file_id, f.file_name, f.mime_type, f.size_bytes, f.has_thumbnail, f.created_at AS file_created_at,
+            COALESCE(
+              (SELECT json_agg(json_build_object(
+                 'emoji', mr.emoji,
+                 'userId', mr.user_id,
+                 'username', ru.username,
+                 'displayName', ru.display_name
+               ) ORDER BY mr.created_at)
+               FROM message_reactions mr
+               JOIN users ru ON ru.id = mr.user_id
+               WHERE mr.message_id = m.id),
+              '[]'::json
+            ) AS reactions
      FROM messages m
      LEFT JOIN files f ON f.message_id = m.id
      WHERE ${whereClause}
@@ -115,6 +127,7 @@ export async function getMessages(conversationId: string, userId: string, option
     createdAt: row.created_at,
     editedAt: row.edited_at,
     deletedAt: row.deleted_at,
+    reactions: row.reactions as { emoji: string; userId: string; username: string; displayName: string }[],
     file:
       !row.deleted_at && row.file_id
         ? {
@@ -272,4 +285,65 @@ export async function markMessageRead(
 
   const readAt = updated.rows[0]?.read_at ?? new Date().toISOString();
   return { conversationId: message.conversation_id, readAt };
+}
+
+export interface Reaction {
+  emoji: string;
+  userId: string;
+  username: string;
+  displayName: string;
+  createdAt: string;
+}
+
+async function getMessageConversation(messageId: string): Promise<{ conversationId: string }> {
+  const result = await db.query<{ conversation_id: string }>(
+    'SELECT conversation_id FROM messages WHERE id = $1',
+    [messageId],
+  );
+  const row = result.rows[0];
+  if (!row) throw new HttpError(404, 'Message not found');
+  return { conversationId: row.conversation_id };
+}
+
+export async function addReaction(messageId: string, userId: string, emoji: string): Promise<Reaction & { conversationId: string }> {
+  const { conversationId } = await getMessageConversation(messageId);
+  await assertMember(conversationId, userId);
+
+  await db.query(
+    `INSERT INTO message_reactions (message_id, user_id, emoji)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (message_id, user_id, emoji) DO NOTHING`,
+    [messageId, userId, emoji],
+  );
+
+  const userResult = await db.query<{ username: string; display_name: string; created_at: string }>(
+    `SELECT u.username, u.display_name, mr.created_at
+     FROM message_reactions mr
+     JOIN users u ON u.id = mr.user_id
+     WHERE mr.message_id = $1 AND mr.user_id = $2 AND mr.emoji = $3`,
+    [messageId, userId, emoji],
+  );
+  const row = userResult.rows[0];
+
+  return {
+    emoji,
+    userId,
+    username: row.username,
+    displayName: row.display_name,
+    createdAt: row.created_at,
+    conversationId,
+  };
+}
+
+export async function removeReaction(messageId: string, userId: string, emoji: string): Promise<{ conversationId: string }> {
+  const { conversationId } = await getMessageConversation(messageId);
+  await assertMember(conversationId, userId);
+
+  const result = await db.query(
+    'DELETE FROM message_reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3',
+    [messageId, userId, emoji],
+  );
+  if (result.rowCount === 0) throw new HttpError(404, 'Reaction not found');
+
+  return { conversationId };
 }

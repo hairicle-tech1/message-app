@@ -55,3 +55,18 @@ export async function getReceiptsHandler(req: Request, res: Response) {
   const { receipts, memberCount } = await messagesService.getMessageReceipts(req.params.id, req.user!.id);
   res.json({ receipts, memberCount });
 }
+
+const addReactionSchema = z.object({
+  emoji: z.string().min(1).max(10),
+});
+
+export async function addReactionHandler(req: Request, res: Response) {
+  const { emoji } = addReactionSchema.parse(req.body);
+  const reaction = await messagesService.addReaction(req.params.id, req.user!.id, emoji);
+  res.status(201).json({ reaction });
+}
+
+export async function removeReactionHandler(req: Request, res: Response) {
+  await messagesService.removeReaction(req.params.id, req.user!.id, req.params.emoji);
+  res.status(204).send();
+}

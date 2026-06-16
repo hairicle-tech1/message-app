@@ -65,6 +65,19 @@ export const openApiSpec = {
           createdAt: { type: 'string', format: 'date-time' },
           editedAt: { type: 'string', format: 'date-time', nullable: true },
           deletedAt: { type: 'string', format: 'date-time', nullable: true },
+          reactions: {
+            type: 'array',
+            description: 'Emoji reactions on this message',
+            items: {
+              type: 'object',
+              properties: {
+                emoji: { type: 'string' },
+                userId: { type: 'string', format: 'uuid' },
+                username: { type: 'string' },
+                displayName: { type: 'string' },
+              },
+            },
+          },
           file: {
             nullable: true,
             type: 'object',
@@ -459,6 +472,42 @@ export const openApiSpec = {
           },
           403: { description: 'Not a member of this conversation' },
           404: { description: 'Message not found' },
+        },
+      },
+    },
+    '/api/messages/{id}/reactions': {
+      post: {
+        tags: ['Messages'],
+        summary: 'Add a reaction to a message',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { type: 'object', required: ['emoji'], properties: { emoji: { type: 'string', example: '👍', maxLength: 10 } } },
+            },
+          },
+        },
+        responses: {
+          201: { description: 'Reaction added — returns { reaction: { emoji, userId, username, displayName, createdAt } }' },
+          404: { description: 'Message not found' },
+          403: { description: 'Not a member of this conversation' },
+        },
+      },
+    },
+    '/api/messages/{id}/reactions/{emoji}': {
+      delete: {
+        tags: ['Messages'],
+        summary: 'Remove own reaction from a message',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'emoji', in: 'path', required: true, schema: { type: 'string' }, example: '👍' },
+        ],
+        responses: {
+          204: { description: 'Reaction removed' },
+          404: { description: 'Reaction not found' },
         },
       },
     },

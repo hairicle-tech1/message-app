@@ -146,6 +146,45 @@ async function handleConnection(io: Server, socket: AuthedSocket) {
     },
   );
 
+  socket.on(
+    'reaction:add',
+    async (
+      payload: { messageId: string; emoji: string },
+      callback?: (response: { ok: boolean; reaction?: unknown; error?: string }) => void,
+    ) => {
+      try {
+        const reaction = await messagesService.addReaction(payload.messageId, user.id, payload.emoji);
+        io.to(`conversation:${reaction.conversationId}`).emit('reaction:added', {
+          messageId: payload.messageId,
+          ...reaction,
+        });
+        callback?.({ ok: true, reaction });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    'reaction:remove',
+    async (
+      payload: { messageId: string; emoji: string },
+      callback?: (response: { ok: boolean; error?: string }) => void,
+    ) => {
+      try {
+        const { conversationId } = await messagesService.removeReaction(payload.messageId, user.id, payload.emoji);
+        io.to(`conversation:${conversationId}`).emit('reaction:removed', {
+          messageId: payload.messageId,
+          userId: user.id,
+          emoji: payload.emoji,
+        });
+        callback?.({ ok: true });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
   socket.on('user:offline', () => {
     if (!offlineHandled) {
       offlineHandled = true;
