@@ -1,13 +1,32 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { requireAuth, requireRole } from '../../middleware/auth.middleware.js';
 import { asyncHandler } from '../../utils/async-handler.js';
-import { createUserHandler, listDirectoryHandler, listUsersHandler } from './users.controller.js';
+import {
+  createUserHandler,
+  getMyProfileHandler,
+  getUserAvatarHandler,
+  listDirectoryHandler,
+  listUsersHandler,
+  updateAvatarHandler,
+  updateProfileHandler,
+} from './users.controller.js';
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 const router = Router();
 
 router.use(requireAuth);
 
-// Any authenticated user can browse the directory to start conversations
+// Own profile
+router.get('/me', asyncHandler(getMyProfileHandler));
+router.patch('/me', asyncHandler(updateProfileHandler));
+router.post('/me/avatar', upload.single('avatar'), asyncHandler(updateAvatarHandler));
+
+// Avatar by user ID (any authenticated user can fetch)
+router.get('/:userId/avatar', asyncHandler(getUserAvatarHandler));
+
+// Directory — any authenticated user can browse
 router.get('/directory', asyncHandler(listDirectoryHandler));
 
 // Closed registration: only admins can list/create accounts
