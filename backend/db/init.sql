@@ -182,6 +182,7 @@ CREATE TABLE files (
     mime_type       TEXT NOT NULL,
     size_bytes      BIGINT NOT NULL,
     has_thumbnail   BOOLEAN NOT NULL DEFAULT FALSE,
+    duration_secs   FLOAT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

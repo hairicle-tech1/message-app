@@ -15,6 +15,7 @@ const router = Router();
 router.use(requireAuth);
 
 router.post('/', upload.single('file'), asyncHandler(filesController.uploadFileHandler));
+router.post('/voice', upload.single('audio'), asyncHandler(filesController.uploadVoiceHandler));
 router.get('/:id', asyncHandler(filesController.downloadFileHandler));
 router.get('/:id/thumbnail', asyncHandler(filesController.downloadThumbnailHandler));
 

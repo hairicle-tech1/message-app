@@ -18,6 +18,21 @@ export async function uploadFileHandler(req: Request, res: Response) {
   res.status(201).json({ file });
 }
 
+export async function uploadVoiceHandler(req: Request, res: Response) {
+  if (!req.file) {
+    throw new HttpError(400, 'No audio file uploaded');
+  }
+
+  const file = await filesService.saveVoiceNote(req.user!.id, {
+    buffer: req.file.buffer,
+    originalName: req.file.originalname,
+    mimeType: req.file.mimetype,
+    size: req.file.size,
+  });
+
+  res.status(201).json({ file });
+}
+
 export async function downloadFileHandler(req: Request, res: Response) {
   const file = await filesService.getFileForDownload(req.params.id, req.user!.id);
 

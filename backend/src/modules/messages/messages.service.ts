@@ -122,7 +122,7 @@ export async function getMessages(conversationId: string, userId: string, option
 
   const result = await db.query(
     `SELECT m.id, m.conversation_id, m.sender_id, m.type, m.ciphertext, m.reply_to_message_id, m.created_at, m.edited_at, m.deleted_at,
-            f.id AS file_id, f.file_name, f.mime_type, f.size_bytes, f.has_thumbnail, f.created_at AS file_created_at,
+            f.id AS file_id, f.file_name, f.mime_type, f.size_bytes, f.has_thumbnail, f.duration_secs AS file_duration_secs, f.created_at AS file_created_at,
             COALESCE(
               (SELECT json_agg(json_build_object(
                  'emoji', mr.emoji,
@@ -170,6 +170,7 @@ export async function getMessages(conversationId: string, userId: string, option
             mimeType: row.mime_type,
             sizeBytes: Number(row.size_bytes),
             hasThumbnail: row.has_thumbnail,
+            durationSecs: row.file_duration_secs ?? null,
             createdAt: row.file_created_at,
           }
         : undefined,

@@ -878,7 +878,55 @@ export const openApiSpec = {
           },
         },
         responses: {
-          201: { description: 'File uploaded — returns { file: { id, fileName, mimeType, sizeBytes, hasThumbnail } }' },
+          201: { description: 'File uploaded — returns { file: { id, fileName, mimeType, sizeBytes, hasThumbnail, durationSecs } }' },
+        },
+      },
+    },
+    '/api/files/voice': {
+      post: {
+        tags: ['Files'],
+        summary: 'Upload a voice note (audio file)',
+        description: 'Accepts audio/webm, audio/ogg, audio/mpeg, audio/mp4, audio/wav, audio/aac. Max 10 MB. Returns durationSecs (extracted from metadata) alongside the file record. Then send POST /api/messages with { type: "audio", fileId }.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                required: ['audio'],
+                properties: { audio: { type: 'string', format: 'binary' } },
+              },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: 'Voice note uploaded',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    file: {
+                      type: 'object',
+                      properties: {
+                        id: { type: 'string', format: 'uuid' },
+                        fileName: { type: 'string' },
+                        mimeType: { type: 'string' },
+                        sizeBytes: { type: 'integer' },
+                        durationSecs: { type: 'number', nullable: true, description: 'Audio duration in seconds, null if could not be extracted' },
+                        hasThumbnail: { type: 'boolean' },
+                        createdAt: { type: 'string', format: 'date-time' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'No file or unsupported audio type' },
+          413: { description: 'File exceeds 10 MB limit' },
         },
       },
     },
