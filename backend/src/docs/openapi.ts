@@ -38,6 +38,24 @@ export const openApiSpec = {
           created_by: { type: 'string', format: 'uuid' },
           created_at: { type: 'string', format: 'date-time' },
           updated_at: { type: 'string', format: 'date-time' },
+          mutedUntil: { type: 'string', format: 'date-time', nullable: true },
+          isMuted: { type: 'boolean' },
+          unreadCount: { type: 'integer', description: 'Messages from others unread by the current user' },
+          lastMessage: {
+            nullable: true,
+            type: 'object',
+            description: 'Most recent message in the conversation',
+            properties: {
+              id: { type: 'string', format: 'uuid' },
+              senderId: { type: 'string', format: 'uuid' },
+              senderUsername: { type: 'string' },
+              senderDisplayName: { type: 'string' },
+              type: { type: 'string' },
+              ciphertext: { type: 'string', description: 'Empty string if deleted' },
+              deletedAt: { type: 'string', format: 'date-time', nullable: true },
+              createdAt: { type: 'string', format: 'date-time' },
+            },
+          },
           members: {
             type: 'array',
             items: {

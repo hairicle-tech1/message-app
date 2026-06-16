@@ -70,6 +70,38 @@ export async function listConversations(userId: string) {
     `SELECT c.*,
        cm.muted_until,
        (cm.muted_until IS NOT NULL AND cm.muted_until > now()) AS is_muted,
+       -- Unread count: messages after the user's last read message
+       (SELECT COUNT(*)
+        FROM messages m_unread
+        WHERE m_unread.conversation_id = c.id
+          AND m_unread.deleted_at IS NULL
+          AND m_unread.sender_id != $1
+          AND (
+            cm.last_read_message_id IS NULL
+            OR m_unread.created_at > (
+              SELECT created_at FROM messages WHERE id = cm.last_read_message_id
+            )
+          )
+       )::int AS unread_count,
+       -- Last message preview for sidebar
+       (SELECT row_to_json(lm) FROM (
+          SELECT m_last.id,
+                 m_last.sender_id,
+                 m_last.type,
+                 CASE WHEN m_last.deleted_at IS NOT NULL THEN ''
+                      ELSE encode(m_last.ciphertext, 'base64')
+                 END AS ciphertext,
+                 m_last.deleted_at,
+                 m_last.created_at,
+                 u_last.username     AS sender_username,
+                 u_last.display_name AS sender_display_name
+          FROM messages m_last
+          JOIN users u_last ON u_last.id = m_last.sender_id
+          WHERE m_last.conversation_id = c.id
+          ORDER BY m_last.created_at DESC
+          LIMIT 1
+        ) lm
+       ) AS last_message,
        (SELECT json_agg(json_build_object(
           'user_id', cm2.user_id,
           'role', cm2.role,
