@@ -5,6 +5,7 @@ import bcrypt from 'bcrypt';
 import sharp from 'sharp';
 import { db } from '../../config/db.js';
 import { env } from '../../config/env.js';
+import { HttpError } from '../../middleware/error.middleware.js';
 
 const avatarsRoot = path.resolve(env.uploadsDir, 'avatars');
 
@@ -140,6 +141,21 @@ export async function updateAvatar(userId: string, buffer: Buffer): Promise<User
 
 export function resolveAvatarPath(userId: string): string {
   return path.join(avatarsRoot, `${userId}.webp`);
+}
+
+export async function changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+  const result = await db.query<{ password_hash: string | null }>(
+    'SELECT password_hash FROM users WHERE id = $1',
+    [userId],
+  );
+  const row = result.rows[0];
+  if (!row?.password_hash) throw new HttpError(400, 'No password set on this account');
+
+  const valid = await bcrypt.compare(currentPassword, row.password_hash);
+  if (!valid) throw new HttpError(403, 'Current password is incorrect');
+
+  const newHash = await bcrypt.hash(newPassword, 12);
+  await db.query('UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2', [newHash, userId]);
 }
 
 export async function listDirectory(excludeUserId: string) {

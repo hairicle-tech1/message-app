@@ -59,3 +59,15 @@ export async function getUserAvatarHandler(req: Request, res: Response) {
   res.setHeader('Cache-Control', 'private, max-age=86400');
   createReadStream(filePath).pipe(res);
 }
+
+export async function changePasswordHandler(req: Request, res: Response) {
+  const body = z
+    .object({
+      currentPassword: z.string().min(1),
+      newPassword: z.string().min(8),
+    })
+    .parse(req.body);
+
+  await usersService.changePassword(req.user!.id, body.currentPassword, body.newPassword);
+  res.status(204).send();
+}

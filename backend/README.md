@@ -27,6 +27,7 @@ Default seeded admin: `admin@company.local` / `ChangeMe123!` (override via
 | GET | `/api/users/me` | Bearer token | Get own profile (id, displayName, avatarUrl, department, role) |
 | PATCH | `/api/users/me` | Bearer token | Update own `displayName` and/or `department` |
 | POST | `/api/users/me/avatar` | Bearer token | Upload avatar image (multipart `avatar` field, max 5 MB); resized to 256×256 webp |
+| POST | `/api/users/me/password` | Bearer token | Change own password (`{ currentPassword, newPassword }` — min 8 chars; 403 if current is wrong) |
 | GET | `/api/users/:userId/avatar` | Bearer token | Fetch any user's avatar (webp, 404 if none set) |
 | GET | `/api/users` | Bearer token (admin) | List all users |
 | POST | `/api/users` | Bearer token (admin) | Create a new user (closed registration) |
