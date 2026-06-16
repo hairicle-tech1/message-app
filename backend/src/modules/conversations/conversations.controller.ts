@@ -36,6 +36,13 @@ export async function getConversationMediaHandler(req: Request, res: Response) {
   res.json({ media });
 }
 
+export async function getConversationAttachmentsHandler(req: Request, res: Response) {
+  const typesParam = req.query.types as string | undefined;
+  const types = typesParam ? typesParam.split(',') : ['file', 'audio'];
+  const items = await filesService.getConversationAttachments(req.params.id, req.user!.id, types);
+  res.json({ items });
+}
+
 export async function addMemberHandler(req: Request, res: Response) {
   const body = memberSchema.parse(req.body);
   await conversationsService.addMember(req.params.id, req.user!.id, body.userId);

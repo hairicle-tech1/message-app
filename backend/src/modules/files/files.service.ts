@@ -171,6 +171,14 @@ export interface ConversationMediaItem {
   file: FileMeta;
 }
 
+export interface ConversationAttachmentItem {
+  messageId: string;
+  type: string;
+  createdAt: string;
+  senderId: string;
+  file: FileMeta;
+}
+
 export async function getConversationMedia(conversationId: string, userId: string): Promise<ConversationMediaItem[]> {
   await assertMember(conversationId, userId);
 
@@ -189,6 +197,36 @@ export async function getConversationMedia(conversationId: string, userId: strin
     messageId: row.message_id,
     type: row.message_type,
     createdAt: row.message_created_at,
+    file: toFileMeta(row),
+  }));
+}
+
+export async function getConversationAttachments(
+  conversationId: string,
+  userId: string,
+  types: string[],
+): Promise<ConversationAttachmentItem[]> {
+  await assertMember(conversationId, userId);
+
+  const placeholders = types.map((_, i) => `$${i + 2}`).join(', ');
+  const result = await db.query<
+    FileRow & { message_id: string; message_type: string; message_created_at: string; sender_id: string }
+  >(
+    `SELECT f.id, f.file_name, f.mime_type, f.size_bytes, f.has_thumbnail, f.created_at,
+            m.id AS message_id, m.type AS message_type, m.created_at AS message_created_at, m.sender_id
+     FROM files f
+     JOIN messages m ON m.id = f.message_id
+     WHERE m.conversation_id = $1 AND m.type IN (${placeholders}) AND m.deleted_at IS NULL
+     ORDER BY m.created_at DESC
+     LIMIT 200`,
+    [conversationId, ...types],
+  );
+
+  return result.rows.map((row) => ({
+    messageId: row.message_id,
+    type: row.message_type,
+    createdAt: row.message_created_at,
+    senderId: row.sender_id,
     file: toFileMeta(row),
   }));
 }
