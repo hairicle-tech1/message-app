@@ -9,6 +9,9 @@ router.use(requireAuth);
 
 router.post('/', asyncHandler(conversationsController.createConversationHandler));
 router.get('/', asyncHandler(conversationsController.listConversationsHandler));
+router.get('/channels/all', asyncHandler(conversationsController.listAllChannelsHandler));
+router.post('/:id/subscribe', asyncHandler(conversationsController.subscribeToChannelHandler));
+router.delete('/:id/subscribe', asyncHandler(conversationsController.unsubscribeFromChannelHandler));
 router.get('/:id', asyncHandler(conversationsController.getConversationHandler));
 router.get('/:id/media', asyncHandler(conversationsController.getConversationMediaHandler));
 router.get('/:id/attachments', asyncHandler(conversationsController.getConversationAttachmentsHandler));

@@ -16,7 +16,19 @@ interface SendMessageInput {
 }
 
 export async function sendMessage(senderId: string, input: SendMessageInput) {
-  await assertMember(input.conversationId, senderId);
+  // Check membership and enforce channel broadcast restriction in one query
+  const memberCheck = await db.query<{ role: string; conv_type: string }>(
+    `SELECT cm.role, c.type AS conv_type
+     FROM conversation_members cm
+     JOIN conversations c ON c.id = cm.conversation_id
+     WHERE cm.conversation_id = $1 AND cm.user_id = $2`,
+    [input.conversationId, senderId],
+  );
+  const memberRow = memberCheck.rows[0];
+  if (!memberRow) throw new HttpError(403, 'Not a member of this conversation');
+  if (memberRow.conv_type === 'channel' && memberRow.role === 'subscriber') {
+    throw new HttpError(403, 'Only channel owners and admins can post');
+  }
 
   const ciphertext = input.ciphertext ?? '';
   const ciphertextBuf = Buffer.from(ciphertext, 'base64');

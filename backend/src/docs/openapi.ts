@@ -325,6 +325,70 @@ export const openApiSpec = {
       },
     },
 
+    // ── Channels ─────────────────────────────────────────────────────────────
+    '/api/conversations/channels/all': {
+      get: {
+        tags: ['Channels'],
+        summary: 'List all channels with subscription status',
+        description: 'Returns every channel-type conversation with subscriber count and whether the current user is subscribed.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Channel list',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    channels: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'string', format: 'uuid' },
+                          name: { type: 'string', nullable: true },
+                          description: { type: 'string', nullable: true },
+                          avatarUrl: { type: 'string', nullable: true },
+                          createdAt: { type: 'string', format: 'date-time' },
+                          memberCount: { type: 'integer' },
+                          isSubscribed: { type: 'boolean' },
+                          myRole: { type: 'string', nullable: true, enum: ['owner', 'admin', 'subscriber', null] },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    '/api/conversations/{id}/subscribe': {
+      post: {
+        tags: ['Channels'],
+        summary: 'Subscribe to a channel',
+        description: 'Idempotent — safe to call if already subscribed.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: {
+          201: { description: 'Subscribed — returns updated channel summary' },
+          400: { description: 'Not a channel' },
+          404: { description: 'Channel not found' },
+        },
+      },
+      delete: {
+        tags: ['Channels'],
+        summary: 'Unsubscribe from a channel',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: {
+          204: { description: 'Unsubscribed' },
+          400: { description: 'Not subscribed or channel owner cannot unsubscribe' },
+        },
+      },
+    },
+
     // ── Conversations ────────────────────────────────────────────────────────
     '/api/conversations': {
       post: {

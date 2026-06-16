@@ -352,3 +352,91 @@ export async function unpinMessage(conversationId: string, messageId: string, us
   );
   if (result.rowCount === 0) throw new HttpError(404, 'Message is not pinned');
 }
+
+// ── Channels ──────────────────────────────────────────────────────────────────
+
+export interface ChannelSummary {
+  id: string;
+  name: string | null;
+  description: string | null;
+  avatarUrl: string | null;
+  createdAt: string;
+  memberCount: number;
+  isSubscribed: boolean;
+  myRole: string | null;
+}
+
+export async function listAllChannels(userId: string): Promise<ChannelSummary[]> {
+  const result = await db.query<{
+    id: string;
+    name: string | null;
+    description: string | null;
+    avatar_url: string | null;
+    created_at: string;
+    member_count: string;
+    is_subscribed: boolean;
+    my_role: string | null;
+  }>(
+    `SELECT c.id, c.name, c.description, c.avatar_url, c.created_at,
+            COUNT(cm2.user_id) AS member_count,
+            EXISTS (
+              SELECT 1 FROM conversation_members cm3
+              WHERE cm3.conversation_id = c.id AND cm3.user_id = $1
+            ) AS is_subscribed,
+            (SELECT cm4.role FROM conversation_members cm4
+             WHERE cm4.conversation_id = c.id AND cm4.user_id = $1) AS my_role
+     FROM conversations c
+     LEFT JOIN conversation_members cm2 ON cm2.conversation_id = c.id
+     WHERE c.type = 'channel'
+     GROUP BY c.id
+     ORDER BY c.name`,
+    [userId],
+  );
+
+  return result.rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    description: r.description,
+    avatarUrl: r.avatar_url,
+    createdAt: r.created_at,
+    memberCount: Number(r.member_count),
+    isSubscribed: r.is_subscribed,
+    myRole: r.my_role,
+  }));
+}
+
+export async function subscribeToChannel(channelId: string, userId: string): Promise<ChannelSummary> {
+  const convResult = await db.query<{ type: string }>(
+    'SELECT type FROM conversations WHERE id = $1',
+    [channelId],
+  );
+  if (!convResult.rows[0]) throw new HttpError(404, 'Channel not found');
+  if (convResult.rows[0].type !== 'channel') throw new HttpError(400, 'Not a channel');
+
+  await db.query(
+    `INSERT INTO conversation_members (conversation_id, user_id, role)
+     VALUES ($1, $2, 'subscriber')
+     ON CONFLICT (conversation_id, user_id) DO NOTHING`,
+    [channelId, userId],
+  );
+
+  const channels = await listAllChannels(userId);
+  return channels.find((c) => c.id === channelId)!;
+}
+
+export async function unsubscribeFromChannel(channelId: string, userId: string): Promise<void> {
+  const memberResult = await db.query<{ role: string }>(
+    `SELECT cm.role FROM conversation_members cm
+     JOIN conversations c ON c.id = cm.conversation_id
+     WHERE cm.conversation_id = $1 AND cm.user_id = $2 AND c.type = 'channel'`,
+    [channelId, userId],
+  );
+  const role = memberResult.rows[0]?.role;
+  if (!role) throw new HttpError(400, 'Not subscribed to this channel');
+  if (role === 'owner') throw new HttpError(400, 'Channel owner cannot unsubscribe');
+
+  await db.query(
+    'DELETE FROM conversation_members WHERE conversation_id = $1 AND user_id = $2',
+    [channelId, userId],
+  );
+}

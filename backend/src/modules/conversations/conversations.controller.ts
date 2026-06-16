@@ -93,3 +93,18 @@ export async function unpinMessageHandler(req: Request, res: Response) {
   await conversationsService.unpinMessage(req.params.id, req.params.messageId, req.user!.id);
   res.status(204).send();
 }
+
+export async function listAllChannelsHandler(req: Request, res: Response) {
+  const channels = await conversationsService.listAllChannels(req.user!.id);
+  res.json({ channels });
+}
+
+export async function subscribeToChannelHandler(req: Request, res: Response) {
+  const channel = await conversationsService.subscribeToChannel(req.params.id, req.user!.id);
+  res.status(201).json({ channel });
+}
+
+export async function unsubscribeFromChannelHandler(req: Request, res: Response) {
+  await conversationsService.unsubscribeFromChannel(req.params.id, req.user!.id);
+  res.status(204).send();
+}
