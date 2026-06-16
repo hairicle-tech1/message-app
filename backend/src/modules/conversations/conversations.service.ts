@@ -68,6 +68,8 @@ export async function createConversation(creatorId: string, input: CreateConvers
 export async function listConversations(userId: string) {
   const result = await db.query(
     `SELECT c.*,
+       cm.muted_until,
+       (cm.muted_until IS NOT NULL AND cm.muted_until > now()) AS is_muted,
        (SELECT json_agg(json_build_object(
           'user_id', cm2.user_id,
           'role', cm2.role,
@@ -96,19 +98,23 @@ export async function getConversationById(conversationId: string, userId: string
   }
 
   const membersResult = await db.query(
-    `SELECT cm.user_id, cm.role, cm.joined_at, u.username, u.display_name, u.avatar_url
+    `SELECT cm.user_id, cm.role, cm.joined_at, cm.muted_until,
+            u.username, u.display_name, u.avatar_url
      FROM conversation_members cm
      JOIN users u ON u.id = cm.user_id
      WHERE cm.conversation_id = $1`,
     [conversationId],
   );
 
-  const isMember = membersResult.rows.some((m) => m.user_id === userId);
-  if (!isMember) {
+  const currentMember = membersResult.rows.find((m) => m.user_id === userId);
+  if (!currentMember) {
     throw new HttpError(403, 'Not a member of this conversation');
   }
 
-  return { ...conversation, members: membersResult.rows };
+  const mutedUntil = currentMember.muted_until ?? null;
+  const isMuted = mutedUntil !== null && new Date(mutedUntil) > new Date();
+
+  return { ...conversation, mutedUntil, isMuted, members: membersResult.rows };
 }
 
 export async function addMember(conversationId: string, requesterId: string, targetUserId: string) {
@@ -172,4 +178,44 @@ async function requireOwnerOrAdmin(conversationId: string, userId: string) {
   if (role !== 'owner' && role !== 'admin') {
     throw new HttpError(403, 'Requires owner or admin role');
   }
+}
+
+export type MuteDuration = 'hour' | 'day' | 'week' | 'forever';
+
+function muteUntilFromDuration(duration: MuteDuration): Date {
+  const now = new Date();
+  if (duration === 'hour') return new Date(now.getTime() + 60 * 60 * 1000);
+  if (duration === 'day') return new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  if (duration === 'week') return new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  return new Date('9999-12-31T23:59:59Z');
+}
+
+export async function muteConversation(conversationId: string, userId: string, duration: MuteDuration) {
+  await assertMember(conversationId, userId);
+  const mutedUntil = muteUntilFromDuration(duration);
+  await db.query(
+    'UPDATE conversation_members SET muted_until = $1 WHERE conversation_id = $2 AND user_id = $3',
+    [mutedUntil, conversationId, userId],
+  );
+  return { conversationId, mutedUntil: mutedUntil.toISOString() };
+}
+
+export async function unmuteConversation(conversationId: string, userId: string) {
+  await assertMember(conversationId, userId);
+  await db.query(
+    'UPDATE conversation_members SET muted_until = NULL WHERE conversation_id = $1 AND user_id = $2',
+    [conversationId, userId],
+  );
+  return { conversationId, mutedUntil: null };
+}
+
+export async function getMuteStatus(conversationId: string, userId: string) {
+  await assertMember(conversationId, userId);
+  const result = await db.query<{ muted_until: string | null }>(
+    'SELECT muted_until FROM conversation_members WHERE conversation_id = $1 AND user_id = $2',
+    [conversationId, userId],
+  );
+  const mutedUntil = result.rows[0]?.muted_until ?? null;
+  const isMuted = mutedUntil !== null && new Date(mutedUntil) > new Date();
+  return { conversationId, mutedUntil, isMuted };
 }

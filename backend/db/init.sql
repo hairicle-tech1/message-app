@@ -95,6 +95,14 @@ CREATE TABLE conversation_members (
 
 CREATE INDEX idx_conversation_members_user_id ON conversation_members(user_id);
 
+CREATE TABLE notification_preferences (
+  user_id         UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  sound_enabled   BOOLEAN NOT NULL DEFAULT TRUE,
+  desktop_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  email_enabled   BOOLEAN NOT NULL DEFAULT FALSE,
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Messages & deliveries
 
 CREATE TABLE messages (

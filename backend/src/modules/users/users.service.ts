@@ -143,6 +143,57 @@ export function resolveAvatarPath(userId: string): string {
   return path.join(avatarsRoot, `${userId}.webp`);
 }
 
+export interface NotificationPrefs {
+  soundEnabled: boolean;
+  desktopEnabled: boolean;
+  emailEnabled: boolean;
+}
+
+export async function getNotificationPrefs(userId: string): Promise<NotificationPrefs> {
+  const result = await db.query<{
+    sound_enabled: boolean;
+    desktop_enabled: boolean;
+    email_enabled: boolean;
+  }>(
+    'SELECT sound_enabled, desktop_enabled, email_enabled FROM notification_preferences WHERE user_id = $1',
+    [userId],
+  );
+  const row = result.rows[0];
+  // Return defaults if no row yet (prefs are created lazily on first PATCH)
+  return {
+    soundEnabled: row?.sound_enabled ?? true,
+    desktopEnabled: row?.desktop_enabled ?? true,
+    emailEnabled: row?.email_enabled ?? false,
+  };
+}
+
+export async function updateNotificationPrefs(
+  userId: string,
+  fields: { soundEnabled?: boolean; desktopEnabled?: boolean; emailEnabled?: boolean },
+): Promise<NotificationPrefs> {
+  const result = await db.query<{
+    sound_enabled: boolean;
+    desktop_enabled: boolean;
+    email_enabled: boolean;
+  }>(
+    `INSERT INTO notification_preferences (user_id, sound_enabled, desktop_enabled, email_enabled)
+     VALUES ($1, COALESCE($2, TRUE), COALESCE($3, TRUE), COALESCE($4, FALSE))
+     ON CONFLICT (user_id) DO UPDATE SET
+       sound_enabled   = COALESCE($2, notification_preferences.sound_enabled),
+       desktop_enabled = COALESCE($3, notification_preferences.desktop_enabled),
+       email_enabled   = COALESCE($4, notification_preferences.email_enabled),
+       updated_at      = now()
+     RETURNING sound_enabled, desktop_enabled, email_enabled`,
+    [userId, fields.soundEnabled ?? null, fields.desktopEnabled ?? null, fields.emailEnabled ?? null],
+  );
+  const row = result.rows[0];
+  return {
+    soundEnabled: row.sound_enabled,
+    desktopEnabled: row.desktop_enabled,
+    emailEnabled: row.email_enabled,
+  };
+}
+
 export async function changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
   const result = await db.query<{ password_hash: string | null }>(
     'SELECT password_hash FROM users WHERE id = $1',

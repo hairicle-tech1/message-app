@@ -6,10 +6,12 @@ import {
   changePasswordHandler,
   createUserHandler,
   getMyProfileHandler,
+  getNotificationPrefsHandler,
   getUserAvatarHandler,
   listDirectoryHandler,
   listUsersHandler,
   updateAvatarHandler,
+  updateNotificationPrefsHandler,
   updateProfileHandler,
 } from './users.controller.js';
 
@@ -24,6 +26,8 @@ router.get('/me', asyncHandler(getMyProfileHandler));
 router.patch('/me', asyncHandler(updateProfileHandler));
 router.post('/me/avatar', upload.single('avatar'), asyncHandler(updateAvatarHandler));
 router.post('/me/password', asyncHandler(changePasswordHandler));
+router.get('/me/notifications', asyncHandler(getNotificationPrefsHandler));
+router.patch('/me/notifications', asyncHandler(updateNotificationPrefsHandler));
 
 // Avatar by user ID (any authenticated user can fetch)
 router.get('/:userId/avatar', asyncHandler(getUserAvatarHandler));

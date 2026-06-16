@@ -57,3 +57,21 @@ export async function removeMemberHandler(req: Request, res: Response) {
   await conversationsService.removeMember(req.params.id, req.user!.id, targetUserId);
   res.status(204).send();
 }
+
+export async function muteConversationHandler(req: Request, res: Response) {
+  const body = z
+    .object({ duration: z.enum(['hour', 'day', 'week', 'forever']) })
+    .parse(req.body);
+  const result = await conversationsService.muteConversation(req.params.id, req.user!.id, body.duration);
+  res.json(result);
+}
+
+export async function unmuteConversationHandler(req: Request, res: Response) {
+  const result = await conversationsService.unmuteConversation(req.params.id, req.user!.id);
+  res.json(result);
+}
+
+export async function getMuteStatusHandler(req: Request, res: Response) {
+  const result = await conversationsService.getMuteStatus(req.params.id, req.user!.id);
+  res.json(result);
+}

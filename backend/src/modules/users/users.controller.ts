@@ -60,6 +60,24 @@ export async function getUserAvatarHandler(req: Request, res: Response) {
   createReadStream(filePath).pipe(res);
 }
 
+export async function getNotificationPrefsHandler(req: Request, res: Response) {
+  const prefs = await usersService.getNotificationPrefs(req.user!.id);
+  res.json({ prefs });
+}
+
+export async function updateNotificationPrefsHandler(req: Request, res: Response) {
+  const body = z
+    .object({
+      soundEnabled: z.boolean().optional(),
+      desktopEnabled: z.boolean().optional(),
+      emailEnabled: z.boolean().optional(),
+    })
+    .parse(req.body);
+
+  const prefs = await usersService.updateNotificationPrefs(req.user!.id, body);
+  res.json({ prefs });
+}
+
 export async function changePasswordHandler(req: Request, res: Response) {
   const body = z
     .object({
