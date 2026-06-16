@@ -55,6 +55,14 @@ export interface ConversationMediaItem {
   file: FileMeta;
 }
 
+export interface ConversationAttachmentItem {
+  messageId: string;
+  type: MessageType;
+  createdAt: string;
+  senderId: string;
+  file: FileMeta;
+}
+
 export interface Message {
   id: string;
   conversationId: string;

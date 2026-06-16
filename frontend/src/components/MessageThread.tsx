@@ -10,8 +10,8 @@ import type {
   MessageEditResult,
   MessageType,
 } from '../api/types';
+import { ConversationInfoPanel } from './ConversationInfoPanel';
 import { Lightbox } from './Lightbox';
-import { MediaGallery } from './MediaGallery';
 import { MessageAttachment } from './MessageAttachment';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
@@ -47,7 +47,7 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
   const [uploading, setUploading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [lightboxItem, setLightboxItem] = useState<{ file: FileMeta; type: MessageType } | null>(null);
-  const [showGallery, setShowGallery] = useState(false);
+  const [showInfoPanel, setShowInfoPanel] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -306,7 +306,7 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
   const messagesById = new Map(messages.map((m) => [m.id, m]));
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="relative flex flex-col h-full overflow-hidden">
       {/* Header */}
       <header className="flex items-center gap-3 px-4 py-3 bg-white border-b border-slate-200 shadow-sm flex-shrink-0">
         {/* Back button — mobile only */}
@@ -322,43 +322,31 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
           </button>
         )}
 
-        {/* Avatar */}
-        <div className="w-9 h-9 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-          {title.slice(0, 1).toUpperCase()}
-        </div>
-
-        {/* Title + status */}
-        <div className="flex-1 min-w-0">
-          <h2 className="font-semibold text-slate-900 text-sm leading-tight truncate">{title}</h2>
-          <div className="text-xs leading-tight mt-0.5">
-            {isTyping ? (
-              <span className="text-indigo-500 italic">typing...</span>
-            ) : other ? (
-              <span className={isOnline ? 'text-emerald-500 font-medium' : 'text-slate-400'}>
-                {isOnline ? '● Online' : '○ Offline'}
-              </span>
-            ) : isGroup ? (
-              <span className="text-slate-400">{conversation.members?.length ?? 0} members</span>
-            ) : null}
-          </div>
-        </div>
-
-        {/* Media button */}
+        {/* Clickable avatar + title → opens info panel */}
         <button
           type="button"
-          onClick={() => setShowGallery(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors flex-shrink-0"
+          onClick={() => setShowInfoPanel(true)}
+          className="flex items-center gap-3 flex-1 min-w-0 rounded-xl hover:bg-slate-50 -mx-2 px-2 py-1 transition-colors text-left"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-            />
-          </svg>
-          Media
+          <div className="w-9 h-9 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+            {title.slice(0, 1).toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="font-semibold text-slate-900 text-sm leading-tight truncate">{title}</h2>
+            <div className="text-xs leading-tight mt-0.5">
+              {isTyping ? (
+                <span className="text-indigo-500 italic">typing...</span>
+              ) : other ? (
+                <span className={isOnline ? 'text-emerald-500 font-medium' : 'text-slate-400'}>
+                  {isOnline ? '● Online' : '○ Offline'}
+                </span>
+              ) : isGroup ? (
+                <span className="text-slate-400">{conversation.members?.length ?? 0} members</span>
+              ) : null}
+            </div>
+          </div>
         </button>
+
       </header>
 
       {/* Backdrop to close any open message menu */}
@@ -375,6 +363,7 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
           const sender = membersById.get(message.senderId);
           const showSender = isGroup && !mine && messages[index - 1]?.senderId !== message.senderId;
           const isEditing = editingMessageId === message.id;
+          const isMediaBubble = (message.type === 'image' || message.type === 'video') && !message.deletedAt && !isEditing;
 
           return (
             <div
@@ -393,121 +382,170 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
 
 
               {/* Bubble */}
-              <div
-                className={`max-w-[70%] rounded-2xl px-4 py-2.5 ${
-                  mine
-                    ? 'bg-indigo-600 text-white rounded-br-sm'
-                    : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm shadow-sm'
-                }`}
-              >
-                {/* Reply quote */}
-                {message.replyToMessageId && (() => {
-                  const original = messagesById.get(message.replyToMessageId);
-                  const authorName = original
-                    ? original.senderId === user!.id
-                      ? 'You'
-                      : membersById.get(original.senderId)?.display_name ?? 'Someone'
-                    : null;
-                  return (
-                    <div
-                      className={`mb-2 px-2.5 py-1.5 rounded-lg border-l-2 ${
-                        mine
-                          ? 'bg-indigo-500/60 border-indigo-300'
-                          : 'bg-slate-100 border-indigo-400'
-                      }`}
-                    >
-                      {original ? (
-                        <>
-                          <p className={`text-[11px] font-semibold mb-0.5 ${mine ? 'text-indigo-200' : 'text-indigo-500'}`}>
-                            {authorName}
-                          </p>
-                          <p className={`text-xs truncate ${mine ? 'text-indigo-200' : 'text-slate-500'}`}>
-                            {original.deletedAt
-                              ? 'This message was deleted'
-                              : original.file
-                                ? '📎 Attachment'
-                                : decodeMessageText(original.ciphertext)}
-                          </p>
-                        </>
-                      ) : (
-                        <p className={`text-xs italic ${mine ? 'text-indigo-300' : 'text-slate-400'}`}>
-                          Original message
-                        </p>
+              {isMediaBubble ? (
+                /* ── Image / video: no background, timestamp overlaid inside ── */
+                <div className={`relative rounded-2xl overflow-hidden max-w-[70%] ${mine ? 'rounded-br-sm' : 'rounded-bl-sm shadow-sm'}`}>
+                  {/* Header band: only when there's a reply quote or group sender name */}
+                  {(message.replyToMessageId || showSender) && (
+                    <div className={`px-3 pt-2.5 pb-2 ${mine ? 'bg-indigo-600' : 'bg-white border-b border-slate-100'}`}>
+                      {showSender && (
+                        <span className={`block text-xs font-semibold mb-1 ${mine ? 'text-indigo-300' : 'text-indigo-400'}`}>
+                          {sender?.display_name ?? 'Unknown'}
+                        </span>
                       )}
+                      {message.replyToMessageId && (() => {
+                        const original = messagesById.get(message.replyToMessageId);
+                        const authorName = original
+                          ? original.senderId === user!.id ? user!.displayName : membersById.get(original.senderId)?.display_name ?? 'Someone'
+                          : null;
+                        return (
+                          <div className={`px-2.5 py-1.5 rounded-lg border-l-2 ${mine ? 'bg-indigo-500/60 border-indigo-300' : 'bg-slate-100 border-indigo-400'}`}>
+                            {original ? (
+                              <>
+                                <p className={`text-[11px] font-semibold mb-0.5 ${mine ? 'text-indigo-200' : 'text-indigo-500'}`}>{authorName}</p>
+                                <p className={`text-xs truncate ${mine ? 'text-indigo-200' : 'text-slate-500'}`}>
+                                  {original.deletedAt ? 'This message was deleted' : original.file ? '📎 Attachment' : decodeMessageText(original.ciphertext)}
+                                </p>
+                              </>
+                            ) : (
+                              <p className={`text-xs italic ${mine ? 'text-indigo-300' : 'text-slate-400'}`}>Original message</p>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
-                  );
-                })()}
-
-                {showSender && (
-                  <span className="block text-xs font-semibold mb-1 text-indigo-300">
-                    {sender?.display_name ?? 'Unknown'}
+                  )}
+                  <MessageAttachment
+                    type={message.type}
+                    file={message.file!}
+                    isMine={mine}
+                    compact
+                    onOpen={(file, type) => setLightboxItem({ file, type })}
+                  />
+                  <span className="absolute bottom-2 right-2 text-[10px] text-white bg-black/40 rounded-full px-1.5 py-0.5 select-none">
+                    {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {message.editedAt && ' (edited)'}
+                    {mine && read && ' ✓✓'}
                   </span>
-                )}
-
-                {message.deletedAt ? (
-                  <p className={`text-sm italic ${mine ? 'text-indigo-200' : 'text-slate-400'}`}>
-                    This message was deleted
-                  </p>
-                ) : (
-                  <>
-                    {message.file && (
-                      <MessageAttachment
-                        type={message.type}
-                        file={message.file}
-                        isMine={mine}
-                        onOpen={(file, type) => setLightboxItem({ file, type })}
-                      />
-                    )}
-                    {isEditing ? (
-                      <form
-                        className="flex flex-col gap-2"
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          submitEdit(message.id);
-                        }}
-                      >
-                        <input
-                          value={editingText}
-                          onChange={(e) => setEditingText(e.target.value)}
-                          autoFocus
-                          className="w-full bg-indigo-500 text-white placeholder-indigo-300 rounded-lg px-3 py-1.5 text-sm border border-indigo-400 focus:outline-none focus:ring-1 focus:ring-white"
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            type="submit"
-                            className="flex-1 py-1 bg-white text-indigo-600 rounded-lg text-xs font-semibold hover:bg-indigo-50 transition-colors"
-                          >
-                            Save
-                          </button>
-                          <button
-                            type="button"
-                            onClick={cancelEdit}
-                            className="flex-1 py-1 text-indigo-200 rounded-lg text-xs hover:text-white transition-colors"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </form>
-                    ) : (
-                      text && <p className="text-sm whitespace-pre-wrap break-words">{text}</p>
-                    )}
-                  </>
-                )}
-
-                {/* Timestamp + edited + read receipt */}
-                <span
-                  className={`block text-right text-[11px] mt-1 select-none ${
-                    mine ? 'text-indigo-200' : 'text-slate-400'
+                </div>
+              ) : (
+                /* ── Text / audio / file / deleted: standard colored bubble ── */
+                <div
+                  className={`max-w-[70%] rounded-2xl px-4 py-2.5 ${
+                    mine
+                      ? 'bg-indigo-600 text-white rounded-br-sm'
+                      : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm shadow-sm'
                   }`}
                 >
-                  {new Date(message.createdAt).toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
-                  {message.editedAt && !message.deletedAt && ' (edited)'}
-                  {mine && read && ' ✓✓'}
-                </span>
-              </div>
+                  {/* Reply quote */}
+                  {message.replyToMessageId && (() => {
+                    const original = messagesById.get(message.replyToMessageId);
+                    const authorName = original
+                      ? original.senderId === user!.id
+                        ? user!.displayName
+                        : membersById.get(original.senderId)?.display_name ?? 'Someone'
+                      : null;
+                    return (
+                      <div
+                        className={`mb-2 px-2.5 py-1.5 rounded-lg border-l-2 ${
+                          mine
+                            ? 'bg-indigo-500/60 border-indigo-300'
+                            : 'bg-slate-100 border-indigo-400'
+                        }`}
+                      >
+                        {original ? (
+                          <>
+                            <p className={`text-[11px] font-semibold mb-0.5 ${mine ? 'text-indigo-200' : 'text-indigo-500'}`}>
+                              {authorName}
+                            </p>
+                            <p className={`text-xs truncate ${mine ? 'text-indigo-200' : 'text-slate-500'}`}>
+                              {original.deletedAt
+                                ? 'This message was deleted'
+                                : original.file
+                                  ? '📎 Attachment'
+                                  : decodeMessageText(original.ciphertext)}
+                            </p>
+                          </>
+                        ) : (
+                          <p className={`text-xs italic ${mine ? 'text-indigo-300' : 'text-slate-400'}`}>
+                            Original message
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {showSender && (
+                    <span className="block text-xs font-semibold mb-1 text-indigo-300">
+                      {sender?.display_name ?? 'Unknown'}
+                    </span>
+                  )}
+
+                  {message.deletedAt ? (
+                    <p className={`text-sm italic ${mine ? 'text-indigo-200' : 'text-slate-400'}`}>
+                      This message was deleted
+                    </p>
+                  ) : (
+                    <>
+                      {message.file && (
+                        <MessageAttachment
+                          type={message.type}
+                          file={message.file}
+                          isMine={mine}
+                          onOpen={(file, type) => setLightboxItem({ file, type })}
+                        />
+                      )}
+                      {isEditing ? (
+                        <form
+                          className="flex flex-col gap-2"
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            submitEdit(message.id);
+                          }}
+                        >
+                          <input
+                            value={editingText}
+                            onChange={(e) => setEditingText(e.target.value)}
+                            autoFocus
+                            className="w-full bg-indigo-500 text-white placeholder-indigo-300 rounded-lg px-3 py-1.5 text-sm border border-indigo-400 focus:outline-none focus:ring-1 focus:ring-white"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="submit"
+                              className="flex-1 py-1 bg-white text-indigo-600 rounded-lg text-xs font-semibold hover:bg-indigo-50 transition-colors"
+                            >
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelEdit}
+                              className="flex-1 py-1 text-indigo-200 rounded-lg text-xs hover:text-white transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        text && <p className="text-sm whitespace-pre-wrap break-words">{text}</p>
+                      )}
+                    </>
+                  )}
+
+                  {/* Timestamp + edited + read receipt */}
+                  <span
+                    className={`block text-right text-[11px] mt-1 select-none ${
+                      mine ? 'text-indigo-200' : 'text-slate-400'
+                    }`}
+                  >
+                    {new Date(message.createdAt).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                    {message.editedAt && !message.deletedAt && ' (edited)'}
+                    {mine && read && ' ✓✓'}
+                  </span>
+                </div>
+              )}
 
               {/* ⋯ dropdown — left of bubble for mine, right for theirs */}
               {!isEditing && !message.deletedAt && (
@@ -596,7 +634,7 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
           <div className="flex-1 min-w-0">
             <p className="text-xs font-semibold text-indigo-600 leading-tight">
               {replyingTo.senderId === user!.id
-                ? 'You'
+                ? user!.displayName
                 : membersById.get(replyingTo.senderId)?.display_name ?? 'Someone'}
             </p>
             <p className="text-xs text-slate-500 truncate leading-tight mt-0.5">
@@ -696,13 +734,26 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
         </button>
       </form>
 
-      {showGallery && (
-        <MediaGallery
-          conversationId={conversationId}
-          onClose={() => setShowGallery(false)}
-          onOpen={(file, type) => setLightboxItem({ file, type })}
-        />
+      {/* Info panel slide-in */}
+      {showInfoPanel && (
+        <>
+          <div
+            className="absolute inset-0 z-20 bg-black/20"
+            onClick={() => setShowInfoPanel(false)}
+          />
+          <div className="absolute inset-y-0 right-0 w-80 z-30 shadow-2xl">
+            <ConversationInfoPanel
+              conversation={conversation}
+              currentUserId={user!.id}
+              presence={presence}
+              onClose={() => setShowInfoPanel(false)}
+              onOpenLightbox={(file, type) => setLightboxItem({ file, type })}
+              initialTab="media"
+            />
+          </div>
+        </>
       )}
+
       {lightboxItem && (
         <Lightbox file={lightboxItem.file} type={lightboxItem.type} onClose={() => setLightboxItem(null)} />
       )}

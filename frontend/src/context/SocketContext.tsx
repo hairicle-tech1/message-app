@@ -19,6 +19,7 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     setSocket(instance);
 
     return () => {
+      instance.emit('user:offline');
       instance.disconnect();
     };
   }, [token]);

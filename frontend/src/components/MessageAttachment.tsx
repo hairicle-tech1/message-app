@@ -6,16 +6,24 @@ interface MessageAttachmentProps {
   type: MessageType;
   file: FileMeta;
   isMine?: boolean;
+  compact?: boolean;
   onOpen?: (file: FileMeta, type: MessageType) => void;
 }
 
-export function MessageAttachment({ type, file, isMine, onOpen }: MessageAttachmentProps) {
+export function MessageAttachment({ type, file, isMine, compact, onOpen }: MessageAttachmentProps) {
   const previewUrl = useFileBlobUrl(file.id, file.hasThumbnail ? 'thumbnail' : 'original');
   const loadingClass = isMine ? 'text-indigo-200' : 'text-slate-400';
 
   if (type === 'image') {
     if (!previewUrl) {
       return <p className={`text-xs italic mb-1 ${loadingClass}`}>Loading {file.fileName}...</p>;
+    }
+    if (compact) {
+      return (
+        <button type="button" className="block w-full hover:opacity-90 transition-opacity" onClick={() => onOpen?.(file, type)}>
+          <img src={previewUrl} alt={file.fileName} className="block w-full max-h-[320px] object-cover" />
+        </button>
+      );
     }
     return (
       <button
@@ -35,6 +43,18 @@ export function MessageAttachment({ type, file, isMine, onOpen }: MessageAttachm
   if (type === 'video') {
     if (!previewUrl) {
       return <p className={`text-xs italic mb-1 ${loadingClass}`}>Loading {file.fileName}...</p>;
+    }
+    if (compact) {
+      return (
+        <button type="button" className="relative block w-full hover:opacity-90 transition-opacity" onClick={() => onOpen?.(file, type)}>
+          <video src={previewUrl} preload="metadata" muted className="block w-full max-h-[320px] object-cover pointer-events-none" />
+          <span className="absolute inset-0 flex items-center justify-center">
+            <span className="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center">
+              <svg className="w-5 h-5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+            </span>
+          </span>
+        </button>
+      );
     }
     return (
       <button
