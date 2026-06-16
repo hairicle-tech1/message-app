@@ -83,6 +83,18 @@ export const openApiSpec = {
           createdAt: { type: 'string', format: 'date-time' },
           editedAt: { type: 'string', format: 'date-time', nullable: true },
           deletedAt: { type: 'string', format: 'date-time', nullable: true },
+          linkPreview: {
+            nullable: true,
+            type: 'object',
+            description: 'OG/Twitter card metadata fetched server-side after send. null until fetched or if no URL found.',
+            properties: {
+              url: { type: 'string' },
+              title: { type: 'string', nullable: true },
+              description: { type: 'string', nullable: true },
+              imageUrl: { type: 'string', nullable: true },
+              siteName: { type: 'string', nullable: true },
+            },
+          },
           reactions: {
             type: 'array',
             description: 'Emoji reactions on this message',

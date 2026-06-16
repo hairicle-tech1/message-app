@@ -3,6 +3,7 @@ import { HttpError } from '../../middleware/error.middleware.js';
 import { assertMember } from '../conversations/conversations.service.js';
 import * as filesService from '../files/files.service.js';
 import type { FileMeta } from '../files/files.service.js';
+import { extractFirstUrl, fetchLinkPreview, saveLinkPreview } from './link-preview.service.js';
 
 export type MessageType = 'text' | 'image' | 'video' | 'audio' | 'file' | 'system';
 
@@ -56,7 +57,7 @@ export async function sendMessage(senderId: string, input: SendMessageInput) {
 
     await client.query('COMMIT');
 
-    return {
+    const result = {
       id: message.id,
       conversationId: input.conversationId,
       senderId,
@@ -66,6 +67,19 @@ export async function sendMessage(senderId: string, input: SendMessageInput) {
       createdAt: message.created_at,
       file,
     };
+
+    // Fire-and-forget: fetch link preview without blocking the send response
+    if (type === 'text' && ciphertext) {
+      const plaintext = Buffer.from(ciphertext, 'base64').toString('utf8');
+      const url = extractFirstUrl(plaintext);
+      if (url) {
+        void fetchLinkPreview(url).then((preview) => {
+          if (preview) return saveLinkPreview(message.id, preview);
+        });
+      }
+    }
+
+    return result;
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -108,7 +122,14 @@ export async function getMessages(conversationId: string, userId: string, option
                JOIN users ru ON ru.id = mr.user_id
                WHERE mr.message_id = m.id),
               '[]'::json
-            ) AS reactions
+            ) AS reactions,
+            CASE WHEN m.deleted_at IS NULL THEN
+              (SELECT row_to_json(lp) FROM (
+                SELECT lp2.url, lp2.title, lp2.description, lp2.image_url AS "imageUrl", lp2.site_name AS "siteName"
+                FROM link_previews lp2
+                WHERE lp2.message_id = m.id
+              ) lp)
+            END AS link_preview
      FROM messages m
      LEFT JOIN files f ON f.message_id = m.id
      WHERE ${whereClause}
@@ -128,6 +149,7 @@ export async function getMessages(conversationId: string, userId: string, option
     editedAt: row.edited_at,
     deletedAt: row.deleted_at,
     reactions: row.reactions as { emoji: string; userId: string; username: string; displayName: string }[],
+    linkPreview: (row.link_preview as { url: string; title: string | null; description: string | null; imageUrl: string | null; siteName: string | null } | null) ?? null,
     file:
       !row.deleted_at && row.file_id
         ? {

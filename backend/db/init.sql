@@ -132,6 +132,18 @@ CREATE TABLE message_deliveries (
 
 CREATE INDEX idx_message_deliveries_recipient ON message_deliveries(recipient_device_id, status);
 
+-- Link previews (one per message, fetched server-side after send)
+
+CREATE TABLE link_previews (
+    message_id  UUID PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+    url         TEXT NOT NULL,
+    title       TEXT,
+    description TEXT,
+    image_url   TEXT,
+    site_name   TEXT,
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Pinned messages
 
 CREATE TABLE pinned_messages (
