@@ -50,6 +50,12 @@ async function handleConnection(io: Server, socket: AuthedSocket) {
   await joinConversationRooms(socket);
   await markUserOnline(io, user.id);
 
+  socket.on('presence:get', () => {
+    void sendPresenceSnapshot(socket);
+  });
+
+  let offlineHandled = false;
+
   socket.on('typing:start', async (payload: { conversationId: string }) => {
     if (!(await isMember(socket, payload.conversationId))) return;
     socket.to(`conversation:${payload.conversationId}`).emit('typing:start', {
@@ -143,8 +149,18 @@ async function handleConnection(io: Server, socket: AuthedSocket) {
     },
   );
 
+  socket.on('user:offline', () => {
+    if (!offlineHandled) {
+      offlineHandled = true;
+      void markUserOffline(io, user.id);
+    }
+  });
+
   socket.on('disconnect', () => {
-    void markUserOffline(io, user.id);
+    if (!offlineHandled) {
+      offlineHandled = true;
+      void markUserOffline(io, user.id);
+    }
   });
 }
 
@@ -167,6 +183,12 @@ async function isMember(socket: AuthedSocket, conversationId: string) {
   }
 }
 
+async function sendPresenceSnapshot(socket: AuthedSocket) {
+  const keys = await redis.keys(`${PRESENCE_KEY_PREFIX}*`);
+  const onlineUserIds = keys.map((key) => key.replace(PRESENCE_KEY_PREFIX, ''));
+  socket.emit('presence:init', { onlineUserIds });
+}
+
 async function markUserOnline(io: Server, userId: string) {
   const key = `${PRESENCE_KEY_PREFIX}${userId}`;
   const count = await redis.incr(key);
@@ -178,9 +200,11 @@ async function markUserOnline(io: Server, userId: string) {
 async function markUserOffline(io: Server, userId: string) {
   const key = `${PRESENCE_KEY_PREFIX}${userId}`;
   const count = await redis.decr(key);
-  if (count <= 0) {
+  if (count === 0) {
     await redis.del(key);
     await db.query('UPDATE users SET last_seen_at = now() WHERE id = $1', [userId]);
     io.emit('presence:update', { userId, status: 'offline' });
+  } else if (count < 0) {
+    await redis.del(key);
   }
 }
