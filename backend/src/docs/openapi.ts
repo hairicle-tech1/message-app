@@ -487,6 +487,55 @@ export const openApiSpec = {
     },
 
     // ── Messages ─────────────────────────────────────────────────────────────
+    '/api/messages/search': {
+      get: {
+        tags: ['Messages'],
+        summary: 'Search messages by text content',
+        description:
+          'Case-insensitive substring search across text messages. Scoped to one conversation when `conversationId` is provided, otherwise searches all conversations the user belongs to. Only non-deleted text messages are searched.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'q', in: 'query', required: true, schema: { type: 'string', minLength: 1, maxLength: 200 }, description: 'Search term' },
+          { name: 'conversationId', in: 'query', required: false, schema: { type: 'string', format: 'uuid' }, description: 'Scope to a specific conversation' },
+          { name: 'limit', in: 'query', required: false, schema: { type: 'integer', default: 20, maximum: 100 } },
+          { name: 'offset', in: 'query', required: false, schema: { type: 'integer', default: 0 } },
+        ],
+        responses: {
+          200: {
+            description: 'Paginated search results',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    query: { type: 'string' },
+                    total: { type: 'integer' },
+                    results: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'string', format: 'uuid' },
+                          conversationId: { type: 'string', format: 'uuid' },
+                          senderId: { type: 'string', format: 'uuid' },
+                          senderUsername: { type: 'string' },
+                          senderDisplayName: { type: 'string' },
+                          type: { type: 'string' },
+                          ciphertext: { type: 'string' },
+                          createdAt: { type: 'string', format: 'date-time' },
+                          editedAt: { type: 'string', format: 'date-time', nullable: true },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'Missing or invalid query parameter' },
+        },
+      },
+    },
     '/api/messages': {
       post: {
         tags: ['Messages'],

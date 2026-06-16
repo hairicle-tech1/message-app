@@ -196,6 +196,96 @@ export async function deleteMessage(messageId: string, userId: string) {
   return { id: messageId, conversationId: message.conversation_id, deletedAt: updated.rows[0].deleted_at };
 }
 
+export interface SearchResult {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  senderUsername: string;
+  senderDisplayName: string;
+  type: string;
+  ciphertext: string;
+  createdAt: string;
+  editedAt: string | null;
+}
+
+interface SearchOptions {
+  conversationId?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function searchMessages(
+  userId: string,
+  query: string,
+  options: SearchOptions = {},
+): Promise<{ results: SearchResult[]; total: number }> {
+  const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
+  const offset = Math.max(options.offset ?? 0, 0);
+  const pattern = `%${query.replace(/[%_\\]/g, '\\$&')}%`;
+
+  const params: unknown[] = [userId, pattern];
+  let scopeClause = `EXISTS (
+    SELECT 1 FROM conversation_members cm
+    WHERE cm.conversation_id = m.conversation_id AND cm.user_id = $1
+  )`;
+
+  if (options.conversationId) {
+    params.push(options.conversationId);
+    scopeClause = `m.conversation_id = $${params.length} AND EXISTS (
+      SELECT 1 FROM conversation_members cm
+      WHERE cm.conversation_id = $${params.length} AND cm.user_id = $1
+    )`;
+  }
+
+  const baseWhere = `${scopeClause}
+    AND m.deleted_at IS NULL
+    AND m.type = 'text'
+    AND convert_from(m.ciphertext, 'UTF8') ILIKE $2 ESCAPE '\\'`;
+
+  const countResult = await db.query<{ total: string }>(
+    `SELECT COUNT(*) AS total FROM messages m WHERE ${baseWhere}`,
+    params,
+  );
+  const total = Number(countResult.rows[0].total);
+
+  params.push(limit, offset);
+  const result = await db.query<{
+    id: string;
+    conversation_id: string;
+    sender_id: string;
+    sender_username: string;
+    sender_display_name: string;
+    type: string;
+    ciphertext: Buffer;
+    created_at: string;
+    edited_at: string | null;
+  }>(
+    `SELECT m.id, m.conversation_id, m.sender_id, m.type, m.ciphertext, m.created_at, m.edited_at,
+            u.username AS sender_username, u.display_name AS sender_display_name
+     FROM messages m
+     JOIN users u ON u.id = m.sender_id
+     WHERE ${baseWhere}
+     ORDER BY m.created_at DESC
+     LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    params,
+  );
+
+  return {
+    total,
+    results: result.rows.map((r) => ({
+      id: r.id,
+      conversationId: r.conversation_id,
+      senderId: r.sender_id,
+      senderUsername: r.sender_username,
+      senderDisplayName: r.sender_display_name,
+      type: r.type,
+      ciphertext: Buffer.from(r.ciphertext).toString('base64'),
+      createdAt: r.created_at,
+      editedAt: r.edited_at,
+    })),
+  };
+}
+
 export interface ReadReceipt {
   userId: string;
   username: string;

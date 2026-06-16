@@ -35,6 +35,23 @@ export async function listMessagesHandler(req: Request, res: Response) {
   res.json({ messages });
 }
 
+const searchMessagesSchema = z.object({
+  q: z.string().min(1).max(200),
+  conversationId: z.string().uuid().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
+export async function searchMessagesHandler(req: Request, res: Response) {
+  const { q, conversationId, limit, offset } = searchMessagesSchema.parse(req.query);
+  const { results, total } = await messagesService.searchMessages(req.user!.id, q, {
+    conversationId,
+    limit,
+    offset,
+  });
+  res.json({ results, total, query: q });
+}
+
 export async function markReadHandler(req: Request, res: Response) {
   await messagesService.markMessageRead(req.params.id, req.user!.id, req.user!.deviceId);
   res.status(204).send();

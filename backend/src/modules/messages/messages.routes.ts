@@ -9,6 +9,7 @@ router.use(requireAuth);
 
 router.post('/', asyncHandler(messagesController.sendMessageHandler));
 router.get('/', asyncHandler(messagesController.listMessagesHandler));
+router.get('/search', asyncHandler(messagesController.searchMessagesHandler));
 router.post('/:id/read', asyncHandler(messagesController.markReadHandler));
 router.get('/:id/receipts', asyncHandler(messagesController.getReceiptsHandler));
 router.post('/:id/reactions', asyncHandler(messagesController.addReactionHandler));
