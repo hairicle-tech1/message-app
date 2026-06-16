@@ -57,3 +57,54 @@ export async function removeMemberHandler(req: Request, res: Response) {
   await conversationsService.removeMember(req.params.id, req.user!.id, targetUserId);
   res.status(204).send();
 }
+
+export async function muteConversationHandler(req: Request, res: Response) {
+  const body = z
+    .object({ duration: z.enum(['hour', 'day', 'week', 'forever']) })
+    .parse(req.body);
+  const result = await conversationsService.muteConversation(req.params.id, req.user!.id, body.duration);
+  res.json(result);
+}
+
+export async function unmuteConversationHandler(req: Request, res: Response) {
+  const result = await conversationsService.unmuteConversation(req.params.id, req.user!.id);
+  res.json(result);
+}
+
+export async function getMuteStatusHandler(req: Request, res: Response) {
+  const result = await conversationsService.getMuteStatus(req.params.id, req.user!.id);
+  res.json(result);
+}
+
+const pinMessageSchema = z.object({ messageId: z.string().uuid() });
+
+export async function listPinnedMessagesHandler(req: Request, res: Response) {
+  const pins = await conversationsService.listPinnedMessages(req.params.id, req.user!.id);
+  res.json({ pins });
+}
+
+export async function pinMessageHandler(req: Request, res: Response) {
+  const { messageId } = pinMessageSchema.parse(req.body);
+  const pin = await conversationsService.pinMessage(req.params.id, messageId, req.user!.id);
+  res.status(201).json({ pin });
+}
+
+export async function unpinMessageHandler(req: Request, res: Response) {
+  await conversationsService.unpinMessage(req.params.id, req.params.messageId, req.user!.id);
+  res.status(204).send();
+}
+
+export async function listAllChannelsHandler(req: Request, res: Response) {
+  const channels = await conversationsService.listAllChannels(req.user!.id);
+  res.json({ channels });
+}
+
+export async function subscribeToChannelHandler(req: Request, res: Response) {
+  const channel = await conversationsService.subscribeToChannel(req.params.id, req.user!.id);
+  res.status(201).json({ channel });
+}
+
+export async function unsubscribeFromChannelHandler(req: Request, res: Response) {
+  await conversationsService.unsubscribeFromChannel(req.params.id, req.user!.id);
+  res.status(204).send();
+}

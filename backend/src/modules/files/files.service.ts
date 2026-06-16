@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { Pool, PoolClient } from 'pg';
+import { parseBuffer } from 'music-metadata';
 import sharp from 'sharp';
 import { db } from '../../config/db.js';
 import { env } from '../../config/env.js';
@@ -18,6 +19,7 @@ export interface FileMeta {
   mimeType: string;
   sizeBytes: number;
   hasThumbnail: boolean;
+  durationSecs: number | null;
   createdAt: string;
 }
 
@@ -28,12 +30,19 @@ export interface UploadedFileInput {
   size: number;
 }
 
+const VOICE_MIME_TYPES = new Set([
+  'audio/webm', 'audio/ogg', 'audio/mpeg', 'audio/mp4',
+  'audio/wav', 'audio/aac', 'audio/x-m4a', 'audio/3gpp',
+]);
+const VOICE_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+
 interface FileRow {
   id: string;
   file_name: string;
   mime_type: string;
   size_bytes: string;
   has_thumbnail: boolean;
+  duration_secs: number | null;
   created_at: string;
 }
 
@@ -56,7 +65,7 @@ export async function saveUploadedFile(uploaderId: string, file: UploadedFileInp
   const result = await db.query<FileRow>(
     `INSERT INTO files (uploader_id, storage_key, file_name, mime_type, size_bytes)
      VALUES ($1, $2, $3, $4, $5)
-     RETURNING id, file_name, mime_type, size_bytes, has_thumbnail, created_at`,
+     RETURNING id, file_name, mime_type, size_bytes, has_thumbnail, duration_secs, created_at`,
     [uploaderId, storageKey, file.originalName, file.mimeType, file.size],
   );
 
@@ -71,6 +80,37 @@ export async function saveUploadedFile(uploaderId: string, file: UploadedFileInp
   }
 
   return toFileMeta(row);
+}
+
+export async function saveVoiceNote(uploaderId: string, file: UploadedFileInput): Promise<FileMeta> {
+  if (!VOICE_MIME_TYPES.has(file.mimeType)) {
+    throw new HttpError(400, `Unsupported audio type: ${file.mimeType}`);
+  }
+  if (file.size > VOICE_MAX_BYTES) {
+    throw new HttpError(413, 'Voice note exceeds 10 MB limit');
+  }
+
+  if (!existsSync(uploadsRoot)) mkdirSync(uploadsRoot, { recursive: true });
+
+  // Extract duration (best-effort — null if format unsupported)
+  let durationSecs: number | null = null;
+  try {
+    const meta = await parseBuffer(file.buffer, { mimeType: file.mimeType });
+    durationSecs = meta.format.duration ?? null;
+    if (durationSecs !== null) durationSecs = Math.round(durationSecs * 10) / 10;
+  } catch { /* non-fatal */ }
+
+  const storageKey = `${randomUUID()}${path.extname(file.originalName) || '.audio'}`;
+  await fs.writeFile(resolveStoragePath(storageKey), file.buffer);
+
+  const result = await db.query<FileRow>(
+    `INSERT INTO files (uploader_id, storage_key, file_name, mime_type, size_bytes, duration_secs)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, file_name, mime_type, size_bytes, has_thumbnail, duration_secs, created_at`,
+    [uploaderId, storageKey, file.originalName, file.mimeType, file.size, durationSecs],
+  );
+
+  return toFileMeta(result.rows[0]);
 }
 
 async function generateThumbnail(fileId: string, buffer: Buffer): Promise<boolean> {
@@ -98,7 +138,7 @@ export async function attachFileToMessage(
   const result = await client.query<FileRow>(
     `UPDATE files SET message_id = $1
      WHERE id = $2 AND uploader_id = $3 AND message_id IS NULL
-     RETURNING id, file_name, mime_type, size_bytes, has_thumbnail, created_at`,
+     RETURNING id, file_name, mime_type, size_bytes, has_thumbnail, duration_secs, created_at`,
     [messageId, fileId, uploaderId],
   );
 
@@ -238,6 +278,7 @@ function toFileMeta(row: FileRow): FileMeta {
     mimeType: row.mime_type,
     sizeBytes: Number(row.size_bytes),
     hasThumbnail: row.has_thumbnail,
+    durationSecs: row.duration_secs ?? null,
     createdAt: row.created_at,
   };
 }

@@ -5,7 +5,7 @@ import { db } from '../config/db.js';
 import { env } from '../config/env.js';
 import { redis } from '../config/redis.js';
 import type { AuthUser } from '../middleware/auth.middleware.js';
-import { assertMember } from '../modules/conversations/conversations.service.js';
+import { assertMember, pinMessage, unpinMessage } from '../modules/conversations/conversations.service.js';
 import * as messagesService from '../modules/messages/messages.service.js';
 
 interface AuthedSocket extends Socket {
@@ -98,20 +98,17 @@ async function handleConnection(io: Server, socket: AuthedSocket) {
     'message:read',
     async (payload: { messageId: string }, callback?: (response: { ok: boolean; error?: string }) => void) => {
       try {
-        await messagesService.markMessageRead(payload.messageId, user.id, user.deviceId);
-
-        const result = await db.query<{ conversation_id: string }>(
-          'SELECT conversation_id FROM messages WHERE id = $1',
-          [payload.messageId],
+        const { conversationId, readAt } = await messagesService.markMessageRead(
+          payload.messageId,
+          user.id,
+          user.deviceId,
         );
-        const conversationId = result.rows[0]?.conversation_id;
-        if (conversationId) {
-          io.to(`conversation:${conversationId}`).emit('message:read', {
-            messageId: payload.messageId,
-            userId: user.id,
-            deviceId: user.deviceId,
-          });
-        }
+        io.to(`conversation:${conversationId}`).emit('message:read', {
+          messageId: payload.messageId,
+          userId: user.id,
+          deviceId: user.deviceId,
+          readAt,
+        });
 
         callback?.({ ok: true });
       } catch (err) {
@@ -142,6 +139,81 @@ async function handleConnection(io: Server, socket: AuthedSocket) {
       try {
         const result = await messagesService.deleteMessage(payload.messageId, user.id);
         io.to(`conversation:${result.conversationId}`).emit('message:deleted', result);
+        callback?.({ ok: true });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    'reaction:add',
+    async (
+      payload: { messageId: string; emoji: string },
+      callback?: (response: { ok: boolean; reaction?: unknown; error?: string }) => void,
+    ) => {
+      try {
+        const reaction = await messagesService.addReaction(payload.messageId, user.id, payload.emoji);
+        io.to(`conversation:${reaction.conversationId}`).emit('reaction:added', {
+          messageId: payload.messageId,
+          ...reaction,
+        });
+        callback?.({ ok: true, reaction });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    'reaction:remove',
+    async (
+      payload: { messageId: string; emoji: string },
+      callback?: (response: { ok: boolean; error?: string }) => void,
+    ) => {
+      try {
+        const { conversationId } = await messagesService.removeReaction(payload.messageId, user.id, payload.emoji);
+        io.to(`conversation:${conversationId}`).emit('reaction:removed', {
+          messageId: payload.messageId,
+          userId: user.id,
+          emoji: payload.emoji,
+        });
+        callback?.({ ok: true });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    'message:pin',
+    async (
+      payload: { conversationId: string; messageId: string },
+      callback?: (response: { ok: boolean; pin?: unknown; error?: string }) => void,
+    ) => {
+      try {
+        const pin = await pinMessage(payload.conversationId, payload.messageId, user.id);
+        io.to(`conversation:${payload.conversationId}`).emit('message:pinned', pin);
+        callback?.({ ok: true, pin });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    'message:unpin',
+    async (
+      payload: { conversationId: string; messageId: string },
+      callback?: (response: { ok: boolean; error?: string }) => void,
+    ) => {
+      try {
+        await unpinMessage(payload.conversationId, payload.messageId, user.id);
+        io.to(`conversation:${payload.conversationId}`).emit('message:unpinned', {
+          conversationId: payload.conversationId,
+          messageId: payload.messageId,
+          unpinnedBy: user.id,
+        });
         callback?.({ ok: true });
       } catch (err) {
         callback?.({ ok: false, error: (err as Error).message });

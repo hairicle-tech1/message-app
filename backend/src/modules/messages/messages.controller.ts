@@ -35,6 +35,23 @@ export async function listMessagesHandler(req: Request, res: Response) {
   res.json({ messages });
 }
 
+const searchMessagesSchema = z.object({
+  q: z.string().min(1).max(200),
+  conversationId: z.string().uuid().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
+export async function searchMessagesHandler(req: Request, res: Response) {
+  const { q, conversationId, limit, offset } = searchMessagesSchema.parse(req.query);
+  const { results, total } = await messagesService.searchMessages(req.user!.id, q, {
+    conversationId,
+    limit,
+    offset,
+  });
+  res.json({ results, total, query: q });
+}
+
 export async function markReadHandler(req: Request, res: Response) {
   await messagesService.markMessageRead(req.params.id, req.user!.id, req.user!.deviceId);
   res.status(204).send();
@@ -49,4 +66,24 @@ export async function editMessageHandler(req: Request, res: Response) {
 export async function deleteMessageHandler(req: Request, res: Response) {
   const result = await messagesService.deleteMessage(req.params.id, req.user!.id);
   res.json({ message: result });
+}
+
+export async function getReceiptsHandler(req: Request, res: Response) {
+  const { receipts, memberCount } = await messagesService.getMessageReceipts(req.params.id, req.user!.id);
+  res.json({ receipts, memberCount });
+}
+
+const addReactionSchema = z.object({
+  emoji: z.string().min(1).max(10),
+});
+
+export async function addReactionHandler(req: Request, res: Response) {
+  const { emoji } = addReactionSchema.parse(req.body);
+  const reaction = await messagesService.addReaction(req.params.id, req.user!.id, emoji);
+  res.status(201).json({ reaction });
+}
+
+export async function removeReactionHandler(req: Request, res: Response) {
+  await messagesService.removeReaction(req.params.id, req.user!.id, req.params.emoji);
+  res.status(204).send();
 }

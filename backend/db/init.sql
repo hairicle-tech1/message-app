@@ -24,6 +24,8 @@ CREATE TABLE users (
     password_hash   TEXT,
     status          user_status NOT NULL DEFAULT 'active',
     last_seen_at    TIMESTAMPTZ,
+    totp_secret     TEXT,
+    totp_enabled    BOOLEAN NOT NULL DEFAULT FALSE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -95,6 +97,14 @@ CREATE TABLE conversation_members (
 
 CREATE INDEX idx_conversation_members_user_id ON conversation_members(user_id);
 
+CREATE TABLE notification_preferences (
+  user_id         UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  sound_enabled   BOOLEAN NOT NULL DEFAULT TRUE,
+  desktop_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  email_enabled   BOOLEAN NOT NULL DEFAULT FALSE,
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Messages & deliveries
 
 CREATE TABLE messages (
@@ -124,6 +134,43 @@ CREATE TABLE message_deliveries (
 
 CREATE INDEX idx_message_deliveries_recipient ON message_deliveries(recipient_device_id, status);
 
+-- Link previews (one per message, fetched server-side after send)
+
+CREATE TABLE link_previews (
+    message_id  UUID PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+    url         TEXT NOT NULL,
+    title       TEXT,
+    description TEXT,
+    image_url   TEXT,
+    site_name   TEXT,
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Pinned messages
+
+CREATE TABLE pinned_messages (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    message_id      UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    pinned_by       UUID NOT NULL REFERENCES users(id),
+    pinned_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (conversation_id, message_id)
+);
+
+CREATE INDEX idx_pinned_messages_conversation_id ON pinned_messages(conversation_id, pinned_at DESC);
+
+-- Message reactions
+
+CREATE TABLE message_reactions (
+    message_id  UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    emoji       TEXT NOT NULL CHECK (char_length(emoji) <= 10),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (message_id, user_id, emoji)
+);
+
+CREATE INDEX idx_message_reactions_message_id ON message_reactions(message_id);
+
 -- Files
 
 CREATE TABLE files (
@@ -135,6 +182,7 @@ CREATE TABLE files (
     mime_type       TEXT NOT NULL,
     size_bytes      BIGINT NOT NULL,
     has_thumbnail   BOOLEAN NOT NULL DEFAULT FALSE,
+    duration_secs   FLOAT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
