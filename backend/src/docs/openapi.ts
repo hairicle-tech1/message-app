@@ -659,6 +659,31 @@ export const openApiSpec = {
     },
 
     // ── Messages ─────────────────────────────────────────────────────────────
+    '/api/messages/undelivered': {
+      get: {
+        tags: ['Messages'],
+        summary: 'Fetch undelivered messages for the current device (offline sync)',
+        description:
+          'Returns up to 200 messages that arrived while this device was offline (status=sent). ' +
+          'Automatically marks them as delivered. Call once on app launch or reconnect.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Undelivered messages, oldest first',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    messages: { type: 'array', items: { $ref: '#/components/schemas/Message' } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
     '/api/messages/search': {
       get: {
         tags: ['Messages'],

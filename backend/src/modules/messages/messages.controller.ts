@@ -95,3 +95,8 @@ export async function removeReactionHandler(req: Request, res: Response) {
   await messagesService.removeReaction(req.params.id, req.user!.id, req.params.emoji);
   res.status(204).send();
 }
+
+export async function getUndeliveredHandler(req: Request, res: Response) {
+  const messages = await messagesService.getUndeliveredMessages(req.user!.id, req.user!.deviceId);
+  res.json({ messages });
+}

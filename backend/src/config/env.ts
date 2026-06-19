@@ -35,4 +35,9 @@ export const env = {
 
   // TOTP
   totpIssuer: process.env.TOTP_ISSUER ?? 'InternalMessenger',
+
+  // Firebase / FCM push notifications — disabled when not set
+  // Set ONE of: FIREBASE_SERVICE_ACCOUNT_JSON (base64 JSON) or FIREBASE_SERVICE_ACCOUNT_PATH (file path)
+  firebaseServiceAccountJson: process.env.FIREBASE_SERVICE_ACCOUNT_JSON,
+  firebaseServiceAccountPath: process.env.FIREBASE_SERVICE_ACCOUNT_PATH,
 };

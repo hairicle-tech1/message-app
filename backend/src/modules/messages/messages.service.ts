@@ -4,6 +4,7 @@ import { assertMember } from '../conversations/conversations.service.js';
 import * as filesService from '../files/files.service.js';
 import type { FileMeta } from '../files/files.service.js';
 import { extractFirstUrl, fetchLinkPreview, saveLinkPreview } from './link-preview.service.js';
+import { sendNewMessagePush } from '../../utils/push.js';
 
 export type MessageType = 'text' | 'image' | 'video' | 'audio' | 'file' | 'system';
 
@@ -80,7 +81,7 @@ export async function sendMessage(senderId: string, input: SendMessageInput) {
       file,
     };
 
-    // Fire-and-forget: fetch link preview without blocking the send response
+    // Fire-and-forget: link preview + push notifications (non-blocking)
     if (type === 'text' && ciphertext) {
       const plaintext = Buffer.from(ciphertext, 'base64').toString('utf8');
       const url = extractFirstUrl(plaintext);
@@ -90,6 +91,8 @@ export async function sendMessage(senderId: string, input: SendMessageInput) {
         });
       }
     }
+
+    void sendNewMessagePush(message.id, input.conversationId, senderId, type, ciphertext);
 
     return result;
   } catch (err) {
@@ -471,4 +474,56 @@ export async function removeReaction(messageId: string, userId: string, emoji: s
   if (result.rowCount === 0) throw new HttpError(404, 'Reaction not found');
 
   return { conversationId };
+}
+
+// ── Offline sync ──────────────────────────────────────────────────────────────
+
+export async function getUndeliveredMessages(userId: string, deviceId: string) {
+  // Returns messages delivered to this device that are still in 'sent' status
+  // (i.e. the device was offline and hasn't acknowledged them yet)
+  const result = await db.query<{
+    id: string;
+    conversation_id: string;
+    sender_id: string;
+    type: string;
+    ciphertext: Buffer;
+    reply_to_message_id: string | null;
+    created_at: string;
+    edited_at: string | null;
+    deleted_at: string | null;
+  }>(
+    `SELECT m.id, m.conversation_id, m.sender_id, m.type, m.ciphertext,
+            m.reply_to_message_id, m.created_at, m.edited_at, m.deleted_at
+     FROM message_deliveries md
+     JOIN messages m ON m.id = md.message_id
+     JOIN user_devices ud ON ud.id = md.recipient_device_id
+     WHERE md.recipient_device_id = $1
+       AND ud.user_id = $2
+       AND md.status = 'sent'
+       AND m.deleted_at IS NULL
+     ORDER BY m.created_at ASC
+     LIMIT 200`,
+    [deviceId, userId],
+  );
+
+  // Mark them as delivered now
+  if (result.rows.length > 0) {
+    await db.query(
+      `UPDATE message_deliveries SET status = 'delivered', delivered_at = now()
+       WHERE recipient_device_id = $1 AND status = 'sent'`,
+      [deviceId],
+    );
+  }
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    conversationId: row.conversation_id,
+    senderId: row.sender_id,
+    type: row.type,
+    ciphertext: Buffer.from(row.ciphertext).toString('base64'),
+    replyToMessageId: row.reply_to_message_id,
+    createdAt: row.created_at,
+    editedAt: row.edited_at,
+    deletedAt: row.deleted_at,
+  }));
 }
