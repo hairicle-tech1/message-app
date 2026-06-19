@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, promises as fs } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, promises as fs } from 'node:fs';
 import path from 'node:path';
+import type { Readable } from 'node:stream';
 import type { Pool, PoolClient } from 'pg';
 import { parseBuffer } from 'music-metadata';
 import sharp from 'sharp';
+import { getObjectStream, putObject, useObjectStorage } from '../../config/storage.js';
 import { db } from '../../config/db.js';
 import { env } from '../../config/env.js';
 import { HttpError } from '../../middleware/error.middleware.js';
@@ -34,7 +36,7 @@ const VOICE_MIME_TYPES = new Set([
   'audio/webm', 'audio/ogg', 'audio/mpeg', 'audio/mp4',
   'audio/wav', 'audio/aac', 'audio/x-m4a', 'audio/3gpp',
 ]);
-const VOICE_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+const VOICE_MAX_BYTES = 10 * 1024 * 1024;
 
 interface FileRow {
   id: string;
@@ -46,21 +48,78 @@ interface FileRow {
   created_at: string;
 }
 
-export function resolveStoragePath(storageKey: string): string {
+type FileRecord = FileRow & { storage_key: string; uploader_id: string; conversation_id: string | null };
+
+// ── Local disk helpers (only used when MINIO_ENDPOINT is not set) ─────────────
+
+function localPath(storageKey: string): string {
   return path.join(uploadsRoot, storageKey);
 }
 
-export function resolveThumbnailPath(fileId: string): string {
+function localThumbnailPath(fileId: string): string {
   return path.join(thumbnailsRoot, `${fileId}.webp`);
 }
 
-export async function saveUploadedFile(uploaderId: string, file: UploadedFileInput): Promise<FileMeta> {
-  if (!existsSync(uploadsRoot)) {
-    mkdirSync(uploadsRoot, { recursive: true });
-  }
+function ensureLocalDirs() {
+  if (!existsSync(uploadsRoot)) mkdirSync(uploadsRoot, { recursive: true });
+}
 
+function ensureThumbnailDir() {
+  if (!existsSync(thumbnailsRoot)) mkdirSync(thumbnailsRoot, { recursive: true });
+}
+
+// ── Unified write / read ──────────────────────────────────────────────────────
+
+async function writeBuf(key: string, buf: Buffer, contentType: string): Promise<void> {
+  if (useObjectStorage) {
+    await putObject(key, buf, contentType);
+  } else {
+    ensureLocalDirs();
+    await fs.writeFile(localPath(key), buf);
+  }
+}
+
+async function readStream(key: string): Promise<Readable> {
+  if (useObjectStorage) {
+    return getObjectStream(key);
+  }
+  return createReadStream(localPath(key));
+}
+
+async function readThumbnailStream(fileId: string): Promise<Readable> {
+  const key = `thumbnails/${fileId}.webp`;
+  if (useObjectStorage) {
+    return getObjectStream(key);
+  }
+  return createReadStream(localThumbnailPath(fileId));
+}
+
+// ── Thumbnail generation ──────────────────────────────────────────────────────
+
+async function generateThumbnail(fileId: string, buffer: Buffer): Promise<boolean> {
+  try {
+    const thumbnail = await sharp(buffer)
+      .resize(THUMBNAIL_MAX_DIMENSION, THUMBNAIL_MAX_DIMENSION, { fit: 'inside', withoutEnlargement: true })
+      .webp({ quality: 75 })
+      .toBuffer();
+
+    if (useObjectStorage) {
+      await putObject(`thumbnails/${fileId}.webp`, thumbnail, 'image/webp');
+    } else {
+      ensureThumbnailDir();
+      await fs.writeFile(localThumbnailPath(fileId), thumbnail);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ── Public API ────────────────────────────────────────────────────────────────
+
+export async function saveUploadedFile(uploaderId: string, file: UploadedFileInput): Promise<FileMeta> {
   const storageKey = `${randomUUID()}${path.extname(file.originalName)}`;
-  await fs.writeFile(resolveStoragePath(storageKey), file.buffer);
+  await writeBuf(storageKey, file.buffer, file.mimeType);
 
   const result = await db.query<FileRow>(
     `INSERT INTO files (uploader_id, storage_key, file_name, mime_type, size_bytes)
@@ -68,7 +127,6 @@ export async function saveUploadedFile(uploaderId: string, file: UploadedFileInp
      RETURNING id, file_name, mime_type, size_bytes, has_thumbnail, duration_secs, created_at`,
     [uploaderId, storageKey, file.originalName, file.mimeType, file.size],
   );
-
   const row = result.rows[0];
 
   if (file.mimeType.startsWith('image/')) {
@@ -90,9 +148,6 @@ export async function saveVoiceNote(uploaderId: string, file: UploadedFileInput)
     throw new HttpError(413, 'Voice note exceeds 10 MB limit');
   }
 
-  if (!existsSync(uploadsRoot)) mkdirSync(uploadsRoot, { recursive: true });
-
-  // Extract duration (best-effort — null if format unsupported)
   let durationSecs: number | null = null;
   try {
     const meta = await parseBuffer(file.buffer, { mimeType: file.mimeType });
@@ -101,7 +156,7 @@ export async function saveVoiceNote(uploaderId: string, file: UploadedFileInput)
   } catch { /* non-fatal */ }
 
   const storageKey = `${randomUUID()}${path.extname(file.originalName) || '.audio'}`;
-  await fs.writeFile(resolveStoragePath(storageKey), file.buffer);
+  await writeBuf(storageKey, file.buffer, file.mimeType);
 
   const result = await db.query<FileRow>(
     `INSERT INTO files (uploader_id, storage_key, file_name, mime_type, size_bytes, duration_secs)
@@ -111,22 +166,6 @@ export async function saveVoiceNote(uploaderId: string, file: UploadedFileInput)
   );
 
   return toFileMeta(result.rows[0]);
-}
-
-async function generateThumbnail(fileId: string, buffer: Buffer): Promise<boolean> {
-  try {
-    if (!existsSync(thumbnailsRoot)) {
-      mkdirSync(thumbnailsRoot, { recursive: true });
-    }
-    const thumbnail = await sharp(buffer)
-      .resize(THUMBNAIL_MAX_DIMENSION, THUMBNAIL_MAX_DIMENSION, { fit: 'inside', withoutEnlargement: true })
-      .webp({ quality: 75 })
-      .toBuffer();
-    await fs.writeFile(resolveThumbnailPath(fileId), thumbnail);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 export async function attachFileToMessage(
@@ -141,67 +180,51 @@ export async function attachFileToMessage(
      RETURNING id, file_name, mime_type, size_bytes, has_thumbnail, duration_secs, created_at`,
     [messageId, fileId, uploaderId],
   );
-
   const row = result.rows[0];
-  if (!row) {
-    throw new HttpError(400, 'Invalid file attachment');
-  }
-
+  if (!row) throw new HttpError(400, 'Invalid file attachment');
   return toFileMeta(row);
 }
 
-interface DownloadableFile {
-  storagePath: string;
-  fileName: string;
-  mimeType: string;
-  sizeBytes: number;
-}
-
-type FileRecord = FileRow & { storage_key: string; uploader_id: string; conversation_id: string | null };
-
 async function loadAuthorizedFile(fileId: string, userId: string): Promise<FileRecord> {
   const result = await db.query<FileRecord>(
-    `SELECT f.id, f.storage_key, f.file_name, f.mime_type, f.size_bytes, f.has_thumbnail, f.uploader_id, f.created_at,
+    `SELECT f.id, f.storage_key, f.file_name, f.mime_type, f.size_bytes,
+            f.has_thumbnail, f.duration_secs, f.uploader_id, f.created_at,
             m.conversation_id
      FROM files f
      LEFT JOIN messages m ON m.id = f.message_id
      WHERE f.id = $1`,
     [fileId],
   );
-
   const file = result.rows[0];
-  if (!file) {
-    throw new HttpError(404, 'File not found');
-  }
+  if (!file) throw new HttpError(404, 'File not found');
 
   if (file.conversation_id) {
     await assertMember(file.conversation_id, userId);
   } else if (file.uploader_id !== userId) {
     throw new HttpError(403, 'Not authorized to access this file');
   }
-
   return file;
 }
 
-export async function getFileForDownload(fileId: string, userId: string): Promise<DownloadableFile> {
+export async function getFileForDownload(fileId: string, userId: string): Promise<{
+  stream: Readable;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+}> {
   const file = await loadAuthorizedFile(fileId, userId);
-
   return {
-    storagePath: resolveStoragePath(file.storage_key),
+    stream: await readStream(file.storage_key),
     fileName: file.file_name,
     mimeType: file.mime_type,
     sizeBytes: Number(file.size_bytes),
   };
 }
 
-export async function getThumbnailForDownload(fileId: string, userId: string): Promise<string> {
+export async function getThumbnailForDownload(fileId: string, userId: string): Promise<Readable> {
   const file = await loadAuthorizedFile(fileId, userId);
-
-  if (!file.has_thumbnail) {
-    throw new HttpError(404, 'No thumbnail available for this file');
-  }
-
-  return resolveThumbnailPath(file.id);
+  if (!file.has_thumbnail) throw new HttpError(404, 'No thumbnail available for this file');
+  return readThumbnailStream(file.id);
 }
 
 export interface ConversationMediaItem {
@@ -223,7 +246,7 @@ export async function getConversationMedia(conversationId: string, userId: strin
   await assertMember(conversationId, userId);
 
   const result = await db.query<FileRow & { message_id: string; message_type: string; message_created_at: string }>(
-    `SELECT f.id, f.file_name, f.mime_type, f.size_bytes, f.has_thumbnail, f.created_at,
+    `SELECT f.id, f.file_name, f.mime_type, f.size_bytes, f.has_thumbnail, f.duration_secs, f.created_at,
             m.id AS message_id, m.type AS message_type, m.created_at AS message_created_at
      FROM files f
      JOIN messages m ON m.id = f.message_id
@@ -252,7 +275,7 @@ export async function getConversationAttachments(
   const result = await db.query<
     FileRow & { message_id: string; message_type: string; message_created_at: string; sender_id: string }
   >(
-    `SELECT f.id, f.file_name, f.mime_type, f.size_bytes, f.has_thumbnail, f.created_at,
+    `SELECT f.id, f.file_name, f.mime_type, f.size_bytes, f.has_thumbnail, f.duration_secs, f.created_at,
             m.id AS message_id, m.type AS message_type, m.created_at AS message_created_at, m.sender_id
      FROM files f
      JOIN messages m ON m.id = f.message_id
