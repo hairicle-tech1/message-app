@@ -883,6 +883,82 @@ export const openApiSpec = {
       },
     },
 
+    // ── Calls ─────────────────────────────────────────────────────────────────
+    '/api/calls': {
+      post: {
+        tags: ['Calls'],
+        summary: 'Initiate a call in a conversation',
+        description: 'Creates the call record and emits `call:incoming` to all other members via Socket.IO. Also sends a push notification to offline members.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['conversationId', 'type'],
+                properties: {
+                  conversationId: { type: 'string', format: 'uuid' },
+                  type: { type: 'string', enum: ['audio', 'video'] },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: { description: 'Call started — returns { call }' },
+          403: { description: 'Not a member of this conversation' },
+        },
+      },
+      get: {
+        tags: ['Calls'],
+        summary: 'Get call history for a conversation',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'conversationId', in: 'query', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          200: { description: 'Array of call records with participants and duration' },
+        },
+      },
+    },
+    '/api/calls/{id}': {
+      get: {
+        tags: ['Calls'],
+        summary: 'Get a specific call record',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { 200: { description: 'Call record with participants' }, 404: { description: 'Not found' } },
+      },
+    },
+    '/api/calls/{id}/join': {
+      post: {
+        tags: ['Calls'],
+        summary: 'Join an active call (REST — also emit call:answer via socket)',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { 200: { description: 'Updated call record' }, 400: { description: 'Call already ended' } },
+      },
+    },
+    '/api/calls/{id}/leave': {
+      post: {
+        tags: ['Calls'],
+        summary: 'Leave a call (auto-ends when last participant leaves)',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { 200: { description: '{ callEnded: boolean }' } },
+      },
+    },
+    '/api/calls/{id}/end': {
+      post: {
+        tags: ['Calls'],
+        summary: 'Force-end a call for all participants',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { 204: { description: 'Call ended' } },
+      },
+    },
+
     // ── Admin ─────────────────────────────────────────────────────────────────
     '/api/admin/stats': {
       get: {

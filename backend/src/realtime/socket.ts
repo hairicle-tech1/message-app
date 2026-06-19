@@ -7,6 +7,8 @@ import { redis } from '../config/redis.js';
 import type { AuthUser } from '../middleware/auth.middleware.js';
 import { assertMember, pinMessage, unpinMessage } from '../modules/conversations/conversations.service.js';
 import * as messagesService from '../modules/messages/messages.service.js';
+import * as callsService from '../modules/calls/calls.service.js';
+import { sendPushToUsers } from '../utils/push.js';
 
 interface AuthedSocket extends Socket {
   data: {
@@ -48,6 +50,7 @@ async function handleConnection(io: Server, socket: AuthedSocket) {
   const { user } = socket.data;
 
   await joinConversationRooms(socket);
+  socket.join(`user:${user.id}`); // personal room for direct signalling
   await markUserOnline(io, user.id);
 
   socket.on('presence:get', () => {
@@ -214,6 +217,179 @@ async function handleConnection(io: Server, socket: AuthedSocket) {
           messageId: payload.messageId,
           unpinnedBy: user.id,
         });
+        callback?.({ ok: true });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  // ── WebRTC Call Signalling ─────────────────────────────────────────────────
+
+  socket.on(
+    'call:start',
+    async (
+      payload: { conversationId: string; type: 'audio' | 'video' },
+      callback?: (r: { ok: boolean; call?: unknown; error?: string }) => void,
+    ) => {
+      try {
+        const call = await callsService.initiateCall(payload.conversationId, user.id, payload.type);
+
+        // Notify all other conversation members of incoming call
+        socket.to(`conversation:${payload.conversationId}`).emit('call:incoming', {
+          callId: call.id,
+          conversationId: payload.conversationId,
+          initiatorId: user.id,
+          type: payload.type,
+        });
+
+        // Push notification to offline members
+        const otherMemberIds = call.participants
+          .map((p) => p.userId)
+          .filter((id) => id !== user.id);
+        void sendPushToUsers(otherMemberIds, {
+          title: 'Incoming call',
+          body: `${user.email} is calling`,
+          data: { callId: call.id, conversationId: payload.conversationId, type: payload.type },
+        });
+
+        callback?.({ ok: true, call });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    'call:offer',
+    async (
+      payload: { callId: string; targetUserId: string; sdp: unknown },
+      callback?: (r: { ok: boolean; error?: string }) => void,
+    ) => {
+      try {
+        // Relay SDP offer directly to the target user's personal room
+        io.to(`user:${payload.targetUserId}`).emit('call:offer', {
+          callId: payload.callId,
+          fromUserId: user.id,
+          sdp: payload.sdp,
+        });
+        callback?.({ ok: true });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    'call:answer',
+    async (
+      payload: { callId: string; targetUserId: string; sdp: unknown },
+      callback?: (r: { ok: boolean; error?: string }) => void,
+    ) => {
+      try {
+        await callsService.joinCall(payload.callId, user.id);
+        io.to(`user:${payload.targetUserId}`).emit('call:answer', {
+          callId: payload.callId,
+          fromUserId: user.id,
+          sdp: payload.sdp,
+        });
+        // Notify conversation the call was answered
+        const call = await callsService.getCallById(payload.callId, user.id);
+        io.to(`conversation:${call.conversationId}`).emit('call:joined', {
+          callId: payload.callId,
+          userId: user.id,
+        });
+        callback?.({ ok: true });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    'call:ice-candidate',
+    (
+      payload: { callId: string; targetUserId: string; candidate: unknown },
+      callback?: (r: { ok: boolean; error?: string }) => void,
+    ) => {
+      try {
+        io.to(`user:${payload.targetUserId}`).emit('call:ice-candidate', {
+          callId: payload.callId,
+          fromUserId: user.id,
+          candidate: payload.candidate,
+        });
+        callback?.({ ok: true });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    'call:reject',
+    async (
+      payload: { callId: string; initiatorUserId: string },
+      callback?: (r: { ok: boolean; error?: string }) => void,
+    ) => {
+      try {
+        io.to(`user:${payload.initiatorUserId}`).emit('call:rejected', {
+          callId: payload.callId,
+          byUserId: user.id,
+        });
+        callback?.({ ok: true });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    'call:leave',
+    async (
+      payload: { callId: string },
+      callback?: (r: { ok: boolean; callEnded?: boolean; error?: string }) => void,
+    ) => {
+      try {
+        const { callEnded } = await callsService.leaveCall(payload.callId, user.id);
+        const call = await callsService.getCallById(payload.callId, user.id);
+
+        io.to(`conversation:${call.conversationId}`).emit('call:participant-left', {
+          callId: payload.callId,
+          userId: user.id,
+          callEnded,
+        });
+
+        if (callEnded) {
+          io.to(`conversation:${call.conversationId}`).emit('call:ended', {
+            callId: payload.callId,
+            durationSecs: call.durationSecs,
+          });
+        }
+
+        callback?.({ ok: true, callEnded });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    'call:end',
+    async (
+      payload: { callId: string },
+      callback?: (r: { ok: boolean; error?: string }) => void,
+    ) => {
+      try {
+        const call = await callsService.getCallById(payload.callId, user.id);
+        await callsService.endCall(payload.callId, user.id);
+        const ended = await callsService.getCallById(payload.callId, user.id);
+
+        io.to(`conversation:${call.conversationId}`).emit('call:ended', {
+          callId: payload.callId,
+          endedBy: user.id,
+          durationSecs: ended.durationSecs,
+        });
+
         callback?.({ ok: true });
       } catch (err) {
         callback?.({ ok: false, error: (err as Error).message });

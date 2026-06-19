@@ -6,6 +6,7 @@ import { openApiSpec } from './docs/openapi.js';
 import { errorHandler, notFoundHandler } from './middleware/error.middleware.js';
 import adminRoutes from './modules/admin/admin.routes.js';
 import authRoutes from './modules/auth/auth.routes.js';
+import callsRoutes from './modules/calls/calls.routes.js';
 import conversationsRoutes from './modules/conversations/conversations.routes.js';
 import filesRoutes from './modules/files/files.routes.js';
 import messagesRoutes from './modules/messages/messages.routes.js';
@@ -30,6 +31,7 @@ app.use('/api/conversations', conversationsRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/files', filesRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/calls', callsRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
