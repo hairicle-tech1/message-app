@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
+import { writeAuditLog } from '../../utils/audit.js';
 import * as messagesService from './messages.service.js';
 
 const sendMessageSchema = z.object({
@@ -65,6 +66,13 @@ export async function editMessageHandler(req: Request, res: Response) {
 
 export async function deleteMessageHandler(req: Request, res: Response) {
   const result = await messagesService.deleteMessage(req.params.id, req.user!.id);
+  writeAuditLog('messages.deleted', {
+    userId: req.user!.id,
+    targetType: 'message',
+    targetId: result.id,
+    ipAddress: req.ip,
+    metadata: { conversationId: result.conversationId },
+  });
   res.json({ message: result });
 }
 

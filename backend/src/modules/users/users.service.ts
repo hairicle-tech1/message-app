@@ -209,6 +209,23 @@ export async function changePassword(userId: string, currentPassword: string, ne
   await db.query('UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2', [newHash, userId]);
 }
 
+export async function registerPushToken(userId: string, deviceId: string, token: string): Promise<void> {
+  const result = await db.query(
+    'UPDATE user_devices SET push_token = $1 WHERE id = $2 AND user_id = $3',
+    [token, deviceId, userId],
+  );
+  if (result.rowCount === 0) {
+    throw new HttpError(404, 'Device not found or does not belong to this user');
+  }
+}
+
+export async function clearPushToken(userId: string, deviceId: string): Promise<void> {
+  await db.query(
+    'UPDATE user_devices SET push_token = NULL WHERE id = $1 AND user_id = $2',
+    [deviceId, userId],
+  );
+}
+
 export async function listDirectory(excludeUserId: string) {
   const result = await db.query(
     `SELECT id, username, display_name, avatar_url, department

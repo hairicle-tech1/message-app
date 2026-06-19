@@ -858,6 +858,116 @@ export const openApiSpec = {
       },
     },
 
+    // ── Admin ─────────────────────────────────────────────────────────────────
+    '/api/admin/stats': {
+      get: {
+        tags: ['Admin'],
+        summary: 'Platform statistics (admin only)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Usage stats',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    stats: {
+                      type: 'object',
+                      properties: {
+                        totalUsers: { type: 'integer' },
+                        activeUsers: { type: 'integer' },
+                        totalMessages: { type: 'integer' },
+                        messagesLast24h: { type: 'integer' },
+                        totalConversations: { type: 'integer' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          403: { description: 'Admin role required' },
+        },
+      },
+    },
+    '/api/admin/audit-logs': {
+      get: {
+        tags: ['Admin'],
+        summary: 'Query audit logs (admin only)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'userId', in: 'query', schema: { type: 'string', format: 'uuid' }, description: 'Filter by actor' },
+          { name: 'action', in: 'query', schema: { type: 'string' }, description: 'e.g. auth.login, messages.deleted' },
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 50, maximum: 200 } },
+          { name: 'offset', in: 'query', schema: { type: 'integer', default: 0 } },
+        ],
+        responses: {
+          200: {
+            description: 'Paginated audit log entries',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    total: { type: 'integer' },
+                    logs: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'string', format: 'uuid' },
+                          userId: { type: 'string', format: 'uuid', nullable: true },
+                          userEmail: { type: 'string', nullable: true },
+                          action: { type: 'string' },
+                          targetType: { type: 'string', nullable: true },
+                          targetId: { type: 'string', format: 'uuid', nullable: true },
+                          ipAddress: { type: 'string', nullable: true },
+                          metadata: { type: 'object', nullable: true },
+                          createdAt: { type: 'string', format: 'date-time' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          403: { description: 'Admin role required' },
+        },
+      },
+    },
+    '/api/users/me/devices/{deviceId}/push-token': {
+      put: {
+        tags: ['Users'],
+        summary: 'Register or update a push notification token for a device',
+        description: 'Store an FCM or APNs token so the server can send push notifications to this device.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'deviceId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { type: 'object', required: ['token'], properties: { token: { type: 'string', description: 'FCM registration token or APNs device token' } } },
+            },
+          },
+        },
+        responses: {
+          204: { description: 'Token saved' },
+          404: { description: 'Device not found or not owned by this user' },
+        },
+      },
+      delete: {
+        tags: ['Users'],
+        summary: 'Clear push notification token (logout / unregister)',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'deviceId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { 204: { description: 'Token cleared' } },
+      },
+    },
+
     // ── Files ─────────────────────────────────────────────────────────────────
     '/api/files': {
       post: {
