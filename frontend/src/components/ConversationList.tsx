@@ -1,5 +1,6 @@
 import type { Conversation } from '../api/types';
 import { getConversationTitle, getOtherMember } from '../utils/conversation';
+import { decodeMessageText } from '../utils/text';
 
 interface ConversationListProps {
   conversations: Conversation[];
@@ -27,6 +28,22 @@ export function ConversationList({
         const other = conversation.type === 'direct' ? getOtherMember(conversation, currentUserId) : null;
         const isOnline = other ? presence[other.user_id] === 'online' : false;
         const isActive = conversation.id === selectedId;
+        const unread = conversation.unread_count ?? 0;
+
+        // Last message preview
+        let preview = '';
+        if (conversation.last_message) {
+          const lm = conversation.last_message;
+          if (lm.deleted_at) {
+            preview = 'Message deleted';
+          } else if (lm.type !== 'text') {
+            const icons: Record<string, string> = { image: '📷', video: '🎥', audio: '🎤', file: '📎' };
+            preview = `${lm.sender_display_name}: ${icons[lm.type] ?? '📎'} ${lm.type}`;
+          } else {
+            const text = decodeMessageText(lm.ciphertext);
+            preview = `${lm.sender_display_name}: ${text}`;
+          }
+        }
 
         return (
           <li key={conversation.id}>
@@ -54,19 +71,21 @@ export function ConversationList({
                 )}
               </span>
 
-              {/* Name + type */}
-              <span className="flex flex-col min-w-0">
-                <span className="text-sm font-semibold truncate leading-tight">{title}</span>
-                <span
-                  className={`text-xs truncate capitalize ${
-                    isActive ? 'text-indigo-200' : 'text-slate-500'
-                  }`}
-                >
-                  {conversation.type === 'group'
-                    ? 'Group'
-                    : conversation.type === 'channel'
-                      ? 'Channel'
-                      : 'Direct'}
+              {/* Name + preview */}
+              <span className="flex flex-col min-w-0 flex-1">
+                <span className="flex items-center gap-1">
+                  <span className="text-sm font-semibold truncate leading-tight flex-1">{title}</span>
+                  {conversation.is_muted && <span className="text-xs opacity-50">🔇</span>}
+                  {unread > 0 && (
+                    <span className={`text-xs font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center leading-none ${
+                      isActive ? 'bg-white text-indigo-600' : 'bg-indigo-500 text-white'
+                    }`}>
+                      {unread > 99 ? '99+' : unread}
+                    </span>
+                  )}
+                </span>
+                <span className={`text-xs truncate ${isActive ? 'text-indigo-200' : 'text-slate-500'}`}>
+                  {preview || (conversation.type === 'group' ? 'Group' : conversation.type === 'channel' ? 'Channel' : 'Direct')}
                 </span>
               </span>
             </button>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import * as conversationsApi from '../api/conversations';
-import type { Conversation, Message } from '../api/types';
+import * as teamsApi from '../api/teams';
+import type { Conversation, Message, Team } from '../api/types';
 import { ConversationList } from '../components/ConversationList';
 import { MessageThread } from '../components/MessageThread';
 import { NewConversationDialog } from '../components/NewConversationDialog';
@@ -14,13 +15,31 @@ export function ChatPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [presence, setPresence] = useState<Record<string, 'online' | 'offline'>>({});
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(true);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const [newTeamName, setNewTeamName] = useState('');
+  const [showNewTeam, setShowNewTeam] = useState(false);
 
   useEffect(() => {
     conversationsApi.listConversations().then(({ conversations }) => {
       setConversations(conversations);
       setSelectedId((current) => current ?? conversations[0]?.id ?? null);
     });
+    teamsApi.listMyTeams().then(({ teams }) => setTeams(teams)).catch(() => {});
   }, []);
+
+  const filteredConversations = selectedTeamId
+    ? conversations.filter((c) => c.team_id === selectedTeamId)
+    : conversations;
+
+  async function handleCreateTeam(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newTeamName.trim()) return;
+    const { team } = await teamsApi.createTeam({ name: newTeamName.trim() });
+    setTeams((prev) => [...prev, team]);
+    setNewTeamName('');
+    setShowNewTeam(false);
+  }
 
   useEffect(() => {
     if (!socket) return;
@@ -103,14 +122,83 @@ export function ChatPage() {
           </button>
         </div>
 
+        {/* Teams section */}
+        {teams.length > 0 && (
+          <div className="px-3 pt-3 pb-1 flex-shrink-0">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-1 mb-1">Teams</p>
+            <div className="flex flex-wrap gap-1">
+              <button
+                onClick={() => setSelectedTeamId(null)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                  selectedTeamId === null ? 'bg-indigo-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                }`}
+              >
+                All
+              </button>
+              {teams.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setSelectedTeamId(t.id === selectedTeamId ? null : t.id)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                    selectedTeamId === t.id ? 'bg-indigo-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  }`}
+                >
+                  {t.name}
+                </button>
+              ))}
+              <button
+                onClick={() => setShowNewTeam((v) => !v)}
+                className="px-2 py-1 rounded-lg text-xs text-slate-500 hover:text-slate-300 hover:bg-slate-700 transition-colors"
+                title="Create team"
+              >
+                +
+              </button>
+            </div>
+            {showNewTeam && (
+              <form onSubmit={handleCreateTeam} className="flex gap-1 mt-2">
+                <input
+                  value={newTeamName}
+                  onChange={(e) => setNewTeamName(e.target.value)}
+                  placeholder="Team name"
+                  className="flex-1 bg-slate-700 text-white text-xs rounded-lg px-2 py-1.5 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                />
+                <button type="submit" className="px-2 py-1 bg-indigo-600 text-white rounded-lg text-xs">Add</button>
+              </form>
+            )}
+          </div>
+        )}
+        {teams.length === 0 && (
+          <div className="px-3 pt-3 flex-shrink-0">
+            <button
+              onClick={() => setShowNewTeam((v) => !v)}
+              className="w-full text-xs text-slate-500 hover:text-slate-300 py-1 text-left px-1 flex items-center gap-1"
+            >
+              <span>+</span> Create a team
+            </button>
+            {showNewTeam && (
+              <form onSubmit={handleCreateTeam} className="flex gap-1 mt-1">
+                <input
+                  value={newTeamName}
+                  onChange={(e) => setNewTeamName(e.target.value)}
+                  placeholder="Team name"
+                  className="flex-1 bg-slate-700 text-white text-xs rounded-lg px-2 py-1.5 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                />
+                <button type="submit" className="px-2 py-1 bg-indigo-600 text-white rounded-lg text-xs">Add</button>
+              </form>
+            )}
+          </div>
+        )}
+
         {/* Section label */}
-        <div className="px-4 pt-4 pb-1 flex-shrink-0">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Messages</span>
+        <div className="px-4 pt-3 pb-1 flex-shrink-0">
+          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            {selectedTeamId ? teams.find((t) => t.id === selectedTeamId)?.name : 'All Messages'}
+          </span>
         </div>
 
         {/* Conversation list */}
         <ConversationList
-          conversations={conversations}
+          conversations={filteredConversations}
           selectedId={selectedId}
           currentUserId={user.id}
           presence={presence}

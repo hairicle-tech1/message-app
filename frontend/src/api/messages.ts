@@ -38,3 +38,24 @@ export function deleteMessage(messageId: string) {
     method: 'DELETE',
   });
 }
+
+export function addReaction(messageId: string, emoji: string) {
+  return apiFetch<void>(`/api/messages/${messageId}/reactions`, {
+    method: 'POST',
+    body: JSON.stringify({ emoji }),
+  });
+}
+
+export function removeReaction(messageId: string, emoji: string) {
+  return apiFetch<void>(`/api/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`, {
+    method: 'DELETE',
+  });
+}
+
+export function searchMessages(q: string, conversationId?: string) {
+  const params = new URLSearchParams({ q });
+  if (conversationId) params.set('conversationId', conversationId);
+  return apiFetch<{ results: Message[]; total: number; query: string }>(
+    `/api/messages/search?${params.toString()}`,
+  );
+}

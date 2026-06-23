@@ -9,6 +9,7 @@ import type {
   MessageDeleteResult,
   MessageEditResult,
   MessageType,
+  Reaction,
 } from '../api/types';
 import { ConversationInfoPanel } from './ConversationInfoPanel';
 import { Lightbox } from './Lightbox';
@@ -52,6 +53,14 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
   const [editingText, setEditingText] = useState('');
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Message[] | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [activeCall, setActiveCall] = useState<{ callId: string; type: 'audio' | 'video' } | null>(null);
+  const [incomingCall, setIncomingCall] = useState<{ callId: string; initiatorId: string; type: string } | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const QUICK_EMOJIS = ['👍', '❤️', '😂', '😢', '🔥'];
   const bottomRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<number | null>(null);
   const markedReadRef = useRef<Set<string>>(new Set());
@@ -128,12 +137,51 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
       );
     };
 
+    const handleReactionAdded = (payload: { messageId: string; conversationId: string } & Reaction) => {
+      if (payload.conversationId !== conversationId) return;
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== payload.messageId) return m;
+          const reactions = (m.reactions ?? []).filter(
+            (r) => !(r.userId === payload.userId && r.emoji === payload.emoji),
+          );
+          return { ...m, reactions: [...reactions, { emoji: payload.emoji, userId: payload.userId, username: payload.username, displayName: payload.displayName }] };
+        }),
+      );
+    };
+
+    const handleReactionRemoved = (payload: { messageId: string; userId: string; emoji: string }) => {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id !== payload.messageId
+            ? m
+            : { ...m, reactions: (m.reactions ?? []).filter((r) => !(r.userId === payload.userId && r.emoji === payload.emoji)) },
+        ),
+      );
+    };
+
+    const handleCallIncoming = (payload: { callId: string; initiatorId: string; type: string; conversationId: string }) => {
+      if (payload.conversationId !== conversationId) return;
+      setIncomingCall({ callId: payload.callId, initiatorId: payload.initiatorId, type: payload.type });
+    };
+
+    const handleCallEnded = () => {
+      setActiveCall(null);
+      setIncomingCall(null);
+      if (localStreamRef.current) { localStreamRef.current.getTracks().forEach((t) => t.stop()); localStreamRef.current = null; }
+      if (peerConnectionRef.current) { peerConnectionRef.current.close(); peerConnectionRef.current = null; }
+    };
+
     socket.on('message:new', handleNewMessage);
     socket.on('typing:start', handleTypingStart);
     socket.on('typing:stop', handleTypingStop);
     socket.on('message:read', handleMessageRead);
     socket.on('message:edited', handleMessageEdited);
     socket.on('message:deleted', handleMessageDeleted);
+    socket.on('reaction:added', handleReactionAdded);
+    socket.on('reaction:removed', handleReactionRemoved);
+    socket.on('call:incoming', handleCallIncoming);
+    socket.on('call:ended', handleCallEnded);
 
     return () => {
       socket.off('message:new', handleNewMessage);
@@ -142,6 +190,10 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
       socket.off('message:read', handleMessageRead);
       socket.off('message:edited', handleMessageEdited);
       socket.off('message:deleted', handleMessageDeleted);
+      socket.off('reaction:added', handleReactionAdded);
+      socket.off('reaction:removed', handleReactionRemoved);
+      socket.off('call:incoming', handleCallIncoming);
+      socket.off('call:ended', handleCallEnded);
     };
   }, [socket, conversationId, user]);
 
@@ -289,6 +341,62 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
     setIsRecording(false);
   }
 
+  async function toggleReaction(messageId: string, emoji: string) {
+    const msg = messages.find((m) => m.id === messageId);
+    const existing = (msg?.reactions ?? []).find((r) => r.userId === user!.id && r.emoji === emoji);
+    if (existing) {
+      await messagesApi.removeReaction(messageId, emoji);
+    } else {
+      await messagesApi.addReaction(messageId, emoji);
+    }
+  }
+
+  async function handleSearch(e: FormEvent) {
+    e.preventDefault();
+    if (!searchQuery.trim()) return;
+    const { results } = await messagesApi.searchMessages(searchQuery, conversationId);
+    setSearchResults(results.reverse());
+  }
+
+  async function startCall(type: 'audio' | 'video') {
+    if (!socket) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: type === 'video' });
+      localStreamRef.current = stream;
+      socket.emit('call:start', { conversationId, type }, (res: { ok: boolean; call?: { id: string }; error?: string }) => {
+        if (!res.ok || !res.call) { window.alert(res.error ?? 'Failed to start call'); return; }
+        setActiveCall({ callId: res.call.id, type });
+      });
+    } catch {
+      window.alert('Microphone/camera access required for calls.');
+    }
+  }
+
+  async function answerCall() {
+    if (!incomingCall || !socket) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      localStreamRef.current = stream;
+      setActiveCall({ callId: incomingCall.callId, type: 'audio' });
+      setIncomingCall(null);
+    } catch {
+      window.alert('Microphone access required.');
+    }
+  }
+
+  function rejectCall() {
+    if (!incomingCall || !socket) return;
+    socket.emit('call:reject', { callId: incomingCall.callId, initiatorUserId: incomingCall.initiatorId });
+    setIncomingCall(null);
+  }
+
+  function endCall() {
+    if (!activeCall || !socket) return;
+    socket.emit('call:end', { callId: activeCall.callId });
+    setActiveCall(null);
+    if (localStreamRef.current) { localStreamRef.current.getTracks().forEach((t) => t.stop()); localStreamRef.current = null; }
+  }
+
   if (!conversation) {
     return (
       <div className="flex-1 flex items-center justify-center text-slate-400 text-sm">
@@ -347,7 +455,90 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
           </div>
         </button>
 
+        {/* Search button */}
+        <button
+          type="button"
+          onClick={() => setSearchOpen((v) => !v)}
+          className="p-2 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors flex-shrink-0"
+          title="Search messages"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        </button>
+
+        {/* Audio call */}
+        {activeCall ? (
+          <button type="button" onClick={endCall}
+            className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs font-medium flex items-center gap-1 flex-shrink-0">
+            <span className="animate-pulse">●</span> End call
+          </button>
+        ) : (
+          <>
+            <button type="button" onClick={() => startCall('audio')}
+              className="p-2 rounded-xl text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors flex-shrink-0" title="Audio call">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+            </button>
+            <button type="button" onClick={() => startCall('video')}
+              className="p-2 rounded-xl text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors flex-shrink-0" title="Video call">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </button>
+          </>
+        )}
       </header>
+
+      {/* Search bar */}
+      {searchOpen && (
+        <form onSubmit={handleSearch} className="flex gap-2 px-4 py-2 bg-slate-50 border-b border-slate-200 flex-shrink-0">
+          <input
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); if (!e.target.value) setSearchResults(null); }}
+            placeholder="Search messages in this conversation…"
+            className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          />
+          <button type="submit" className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm">Search</button>
+          <button type="button" onClick={() => { setSearchOpen(false); setSearchResults(null); setSearchQuery(''); }}
+            className="px-3 py-1.5 bg-slate-200 text-slate-600 rounded-lg text-sm">✕</button>
+        </form>
+      )}
+
+      {/* Incoming call banner */}
+      {incomingCall && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 border-b border-emerald-200 flex-shrink-0">
+          <span className="animate-pulse text-emerald-500">📞</span>
+          <span className="text-sm font-medium text-emerald-800 flex-1">Incoming {incomingCall.type} call…</span>
+          <button onClick={answerCall} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm">Answer</button>
+          <button onClick={rejectCall} className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-sm">Decline</button>
+        </div>
+      )}
+
+      {/* Search results overlay */}
+      {searchResults !== null && (
+        <div className="absolute inset-0 z-10 bg-white flex flex-col">
+          <div className="flex items-center gap-2 px-4 py-3 border-b">
+            <span className="font-semibold text-sm">{searchResults.length} results for "{searchQuery}"</span>
+            <button onClick={() => { setSearchResults(null); setSearchOpen(false); setSearchQuery(''); }}
+              className="ml-auto text-slate-400 hover:text-slate-600">✕ Close</button>
+          </div>
+          <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+            {searchResults.length === 0 ? (
+              <p className="px-4 py-8 text-center text-slate-400 text-sm">No messages found</p>
+            ) : searchResults.map((m) => {
+              const sender = (conversation.members ?? []).find((mb) => mb.user_id === m.senderId);
+              return (
+                <div key={m.id} className="px-4 py-3 hover:bg-slate-50">
+                  <p className="text-xs text-slate-400 mb-1">{sender?.display_name ?? 'Unknown'} · {new Date(m.createdAt).toLocaleString()}</p>
+                  <p className="text-sm text-slate-700">{decodeMessageText(m.ciphertext)}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Backdrop to close any open message menu */}
       {openMenuId && (
@@ -531,6 +722,25 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
                     </>
                   )}
 
+                  {/* Link preview */}
+                  {!message.deletedAt && message.linkPreview?.title && (
+                    <a href={message.linkPreview.url} target="_blank" rel="noopener noreferrer"
+                      className={`block mt-2 rounded-lg overflow-hidden border ${mine ? 'border-indigo-400/40' : 'border-slate-200'} hover:opacity-90 transition-opacity`}>
+                      {message.linkPreview.imageUrl && (
+                        <img src={message.linkPreview.imageUrl} alt="" className="w-full max-h-32 object-cover" />
+                      )}
+                      <div className={`px-3 py-2 ${mine ? 'bg-indigo-500/40' : 'bg-slate-50'}`}>
+                        {message.linkPreview.siteName && (
+                          <p className={`text-[10px] uppercase font-semibold mb-0.5 ${mine ? 'text-indigo-200' : 'text-indigo-400'}`}>{message.linkPreview.siteName}</p>
+                        )}
+                        <p className={`text-xs font-semibold leading-tight ${mine ? 'text-white' : 'text-slate-800'}`}>{message.linkPreview.title}</p>
+                        {message.linkPreview.description && (
+                          <p className={`text-[11px] mt-0.5 line-clamp-2 ${mine ? 'text-indigo-200' : 'text-slate-500'}`}>{message.linkPreview.description}</p>
+                        )}
+                      </div>
+                    </a>
+                  )}
+
                   {/* Timestamp + edited + read receipt */}
                   <span
                     className={`block text-right text-[11px] mt-1 select-none ${
@@ -544,6 +754,35 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
                     {message.editedAt && !message.deletedAt && ' (edited)'}
                     {mine && read && ' ✓✓'}
                   </span>
+                </div>
+              )}
+
+              {/* Reaction bar — below bubble */}
+              {!message.deletedAt && (
+                <div className={`flex flex-wrap gap-1 mt-0.5 ${mine ? 'justify-end' : 'justify-start'} ${isGroup && !mine ? 'ml-9' : ''}`}>
+                  {/* Grouped existing reactions */}
+                  {Object.entries(
+                    (message.reactions ?? []).reduce<Record<string, { count: number; mine: boolean }>>((acc, r) => {
+                      acc[r.emoji] = { count: (acc[r.emoji]?.count ?? 0) + 1, mine: acc[r.emoji]?.mine || r.userId === user!.id };
+                      return acc;
+                    }, {}),
+                  ).map(([emoji, { count, mine: iMine }]) => (
+                    <button key={emoji} onClick={() => toggleReaction(message.id, emoji)}
+                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs border transition-colors ${
+                        iMine ? 'bg-indigo-100 border-indigo-300 text-indigo-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                      }`}>
+                      {emoji} <span>{count}</span>
+                    </button>
+                  ))}
+                  {/* Quick-add emojis — visible on hover */}
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5">
+                    {QUICK_EMOJIS.map((e) => (
+                      <button key={e} onClick={() => toggleReaction(message.id, e)}
+                        className="w-6 h-6 rounded-full bg-slate-100 hover:bg-slate-200 text-xs flex items-center justify-center transition-colors">
+                        {e}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
 
