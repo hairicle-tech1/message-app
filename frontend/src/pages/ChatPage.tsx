@@ -6,6 +6,7 @@ import type { Conversation, Message, Team, TeamMember } from '../api/types';
 import { ConversationList } from '../components/ConversationList';
 import { MessageThread } from '../components/MessageThread';
 import { NewConversationDialog } from '../components/NewConversationDialog';
+import { ProfilePanel } from '../components/ProfilePanel';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 
@@ -21,6 +22,7 @@ export function ChatPage() {
   const [presence, setPresence] = useState<Record<string, 'online' | 'offline'>>({});
 
   // Teams state
+  const [showProfile, setShowProfile] = useState(false);
   const [teams, setTeams] = useState<Team[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -139,14 +141,16 @@ export function ChatPage() {
   }
 
   return (
-    <div className="flex h-full overflow-hidden bg-slate-50">
+    <div className="relative flex h-full overflow-hidden bg-slate-50">
+      {showProfile && <ProfilePanel onClose={() => setShowProfile(false)} />}
 
       {/* ── Icon navigation (like MS Teams left rail) ─────────────────── */}
       <nav className="w-16 bg-slate-900 flex flex-col items-center py-3 gap-1 flex-shrink-0 border-r border-slate-800">
-        {/* User avatar */}
-        <div className="w-9 h-9 rounded-full bg-indigo-500 flex items-center justify-center text-white text-sm font-bold mb-3 flex-shrink-0">
+        {/* User avatar — click to open profile */}
+        <button onClick={() => setShowProfile(true)} title="My profile"
+          className="w-9 h-9 rounded-full bg-indigo-500 flex items-center justify-center text-white text-sm font-bold mb-3 flex-shrink-0 hover:ring-2 hover:ring-indigo-300 transition-all">
           {user.displayName.slice(0, 1).toUpperCase()}
-        </div>
+        </button>
 
         <NavItem id="chat" label="Chat" icon={
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

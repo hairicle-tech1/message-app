@@ -6,6 +6,16 @@ export interface User {
   role: string;
 }
 
+export interface UserProfile {
+  id: string;
+  email: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  department: string | null;
+  role: string;
+}
+
 export interface DirectoryUser {
   id: string;
   username: string;
