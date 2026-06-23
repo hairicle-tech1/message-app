@@ -3,16 +3,15 @@ import * as profileApi from '../api/profile';
 import type { UserProfile } from '../api/types';
 import { useAuth } from '../context/AuthContext';
 
-const AVATAR_COLORS = [
-  'bg-indigo-500', 'bg-purple-500', 'bg-pink-500', 'bg-red-500',
-  'bg-orange-500', 'bg-emerald-500', 'bg-teal-500', 'bg-cyan-500',
-  'bg-blue-500', 'bg-violet-500',
+const AVATAR_HEX = [
+  '#6366f1','#a855f7','#ec4899','#ef4444','#f97316',
+  '#10b981','#14b8a6','#06b6d4','#3b82f6','#8b5cf6',
 ];
 
 function avatarColor(seed: string): string {
   let h = 0;
   for (let i = 0; i < seed.length; i++) h = seed.charCodeAt(i) + ((h << 5) - h);
-  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
+  return AVATAR_HEX[Math.abs(h) % AVATAR_HEX.length];
 }
 
 type Tab = 'profile' | 'security' | 'notifications';
@@ -178,7 +177,11 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
     }
   }
 
-  const avatarUrl = profile ? profileApi.getAvatarUrl(profile.id) : null;
+  // hasAvatar is true only when the user actually has a photo stored (DB avatarUrl is set)
+  const hasAvatar = Boolean(profile?.avatarUrl ?? user?.avatarUrl);
+  // avatarSrc is the cachebust URL — only used when hasAvatar is true
+  const userId = profile?.id ?? user?.id;
+  const avatarSrc = userId ? `${profileApi.getAvatarUrl(userId)}?v=${avatarKey}` : null;
 
   return (
     <div className="absolute inset-0 z-50 flex">
@@ -198,15 +201,17 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
 
           {/* Avatar */}
           <div className="relative w-fit mx-auto mb-3">
-            {/* Uploaded avatar */}
-            {avatarUrl && (
-              <img key={avatarKey} src={`${avatarUrl}?v=${avatarKey}`}
+            {/* Photo — only rendered when user has actually uploaded one */}
+            {hasAvatar && avatarSrc ? (
+              <img key={avatarKey} src={avatarSrc}
                 className="w-20 h-20 rounded-full object-cover ring-4 ring-white/30"
                 onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
-            )}
-            {/* Generated color avatar — shown when no photo uploaded */}
-            {!avatarUrl && (
-              <div className={`w-20 h-20 rounded-full flex items-center justify-center text-white text-3xl font-bold ring-4 ring-white/30 ${avatarColor(user?.username ?? 'u')}`}>
+            ) : (
+              /* Generated color avatar — shown when no photo uploaded */
+              <div
+                style={{ backgroundColor: avatarColor(user?.username ?? 'u') }}
+                className="w-20 h-20 rounded-full flex items-center justify-center text-white text-3xl font-bold ring-4 ring-white/30"
+              >
                 {(profile?.displayName ?? user?.displayName ?? '?').slice(0, 1).toUpperCase()}
               </div>
             )}

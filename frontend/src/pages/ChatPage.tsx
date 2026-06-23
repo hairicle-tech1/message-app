@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react';
 
-const AVATAR_COLORS = [
-  'bg-indigo-500','bg-purple-500','bg-pink-500','bg-red-500',
-  'bg-orange-500','bg-emerald-500','bg-teal-500','bg-cyan-500',
-  'bg-blue-500','bg-violet-500',
+const AVATAR_HEX = [
+  '#6366f1','#a855f7','#ec4899','#ef4444','#f97316',
+  '#10b981','#14b8a6','#06b6d4','#3b82f6','#8b5cf6',
 ];
-function avatarBg(seed: string) {
+function avatarBg(seed: string): string {
   let h = 0;
   for (let i = 0; i < seed.length; i++) h = seed.charCodeAt(i) + ((h << 5) - h);
-  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
+  return AVATAR_HEX[Math.abs(h) % AVATAR_HEX.length];
 }
 import * as conversationsApi from '../api/conversations';
 import * as teamsApi from '../api/teams';
@@ -159,7 +158,8 @@ export function ChatPage() {
       <nav className="w-16 bg-slate-900 flex flex-col items-center py-3 gap-1 flex-shrink-0 border-r border-slate-800">
         {/* User avatar — click to open profile */}
         <button onClick={() => setShowProfile(true)} title="My profile"
-          className={`relative w-9 h-9 rounded-full mb-3 flex-shrink-0 hover:ring-2 hover:ring-white/40 transition-all overflow-hidden ${avatarBg(user.username)}`}>
+          style={{ backgroundColor: avatarBg(user.username) }}
+          className="relative w-9 h-9 rounded-full mb-3 flex-shrink-0 hover:ring-2 hover:ring-white/40 transition-all overflow-hidden">
           {user.avatarUrl && (
             <img src={user.avatarUrl} alt={user.displayName}
               className="absolute inset-0 w-full h-full object-cover"
