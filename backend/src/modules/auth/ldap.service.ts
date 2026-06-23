@@ -1,6 +1,7 @@
 import { Client } from 'ldapts';
 import { db } from '../../config/db.js';
 import { env } from '../../config/env.js';
+import { assignToDepartmentTeam } from '../users/users.service.js';
 
 export interface LdapUser {
   dn: string;
@@ -97,7 +98,7 @@ export async function ldapAuthenticate(username: string, password: string): Prom
 }
 
 export async function upsertLdapUser(ldapUser: LdapUser): Promise<{ id: string; role: string }> {
-  const result = await db.query<{ id: string; role: string }>(
+  const result = await db.query<{ id: string; role: string; department: string | null }>(
     `INSERT INTO users (email, username, display_name, department, ldap_dn, password_hash)
      VALUES ($1, $2, $3, $4, $5, NULL)
      ON CONFLICT (ldap_dn) DO UPDATE SET
@@ -105,8 +106,15 @@ export async function upsertLdapUser(ldapUser: LdapUser): Promise<{ id: string; 
        display_name = EXCLUDED.display_name,
        department   = EXCLUDED.department,
        updated_at   = now()
-     RETURNING id, role`,
+     RETURNING id, role, department`,
     [ldapUser.email, ldapUser.username, ldapUser.displayName, ldapUser.department ?? null, ldapUser.dn],
   );
-  return result.rows[0];
+  const user = result.rows[0];
+
+  // Auto-assign to department team on every LDAP sync
+  if (user.department) {
+    await assignToDepartmentTeam(user.id, user.department);
+  }
+
+  return { id: user.id, role: user.role };
 }

@@ -20,17 +20,61 @@ interface CreateUserInput {
   role?: 'employee' | 'admin';
 }
 
+// ── Department → Team auto-assignment ────────────────────────────────────────
+
+async function findOrCreateDepartmentTeam(department: string, userId: string): Promise<string> {
+  // Try to find an existing team whose name matches the department
+  const existing = await db.query<{ id: string }>(
+    'SELECT id FROM teams WHERE name = $1 LIMIT 1',
+    [department],
+  );
+  if (existing.rows[0]) return existing.rows[0].id;
+
+  // Create the team on first occurrence — the triggering user becomes creator
+  const created = await db.query<{ id: string }>(
+    `INSERT INTO teams (name, description, created_by)
+     VALUES ($1, $2, $3) RETURNING id`,
+    [department, `${department} department`, userId],
+  );
+  return created.rows[0].id;
+}
+
+export async function assignToDepartmentTeam(userId: string, department: string | null | undefined): Promise<void> {
+  if (!department) return;
+  const teamId = await findOrCreateDepartmentTeam(department, userId);
+  await db.query(
+    `INSERT INTO team_members (team_id, user_id, role)
+     VALUES ($1, $2, 'member')
+     ON CONFLICT (team_id, user_id) DO NOTHING`,
+    [teamId, userId],
+  );
+}
+
+async function removeFromDepartmentTeam(userId: string, department: string): Promise<void> {
+  // Only remove if this team was auto-created for the department (name matches)
+  await db.query(
+    `DELETE FROM team_members
+     WHERE user_id = $1
+       AND team_id = (SELECT id FROM teams WHERE name = $2 LIMIT 1)`,
+    [userId, department],
+  );
+}
+
 export async function createUser(input: CreateUserInput) {
   const passwordHash = await bcrypt.hash(input.password, 12);
 
-  const result = await db.query(
+  const result = await db.query<{ id: string }>(
     `INSERT INTO users (email, username, display_name, password_hash, department, role)
      VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'employee'))
      RETURNING id, email, username, display_name, role, department, status, created_at`,
     [input.email, input.username, input.displayName, passwordHash, input.department ?? null, input.role ?? null],
   );
 
-  return result.rows[0];
+  const user = result.rows[0];
+  // Auto-add to department team
+  await assignToDepartmentTeam(user.id, input.department);
+
+  return user;
 }
 
 export async function listUsers() {
@@ -72,6 +116,13 @@ export async function getProfile(userId: string): Promise<UserProfile | null> {
 }
 
 export async function updateProfile(userId: string, fields: { displayName?: string; department?: string | null }): Promise<UserProfile> {
+  // Fetch current department before updating (needed for team re-assignment)
+  let oldDepartment: string | null = null;
+  if (fields.department !== undefined) {
+    const cur = await db.query<{ department: string | null }>('SELECT department FROM users WHERE id = $1', [userId]);
+    oldDepartment = cur.rows[0]?.department ?? null;
+  }
+
   const setClauses: string[] = ['updated_at = now()'];
   const params: unknown[] = [];
 
@@ -93,8 +144,14 @@ export async function updateProfile(userId: string, fields: { displayName?: stri
      RETURNING id, email, username, display_name, avatar_url, department, role`,
     params,
   );
-
   const row = result.rows[0];
+
+  // Sync department team membership when department changes
+  if (fields.department !== undefined && oldDepartment !== (fields.department || null)) {
+    if (oldDepartment) await removeFromDepartmentTeam(userId, oldDepartment);
+    if (fields.department) await assignToDepartmentTeam(userId, fields.department);
+  }
+
   return {
     id: row.id,
     email: row.email,

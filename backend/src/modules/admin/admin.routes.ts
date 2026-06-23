@@ -9,5 +9,6 @@ router.use(requireAuth, requireRole('admin'));
 
 router.get('/audit-logs', asyncHandler(adminController.listAuditLogsHandler));
 router.get('/stats', asyncHandler(adminController.getStatsHandler));
+router.post('/sync-department-teams', asyncHandler(adminController.syncDepartmentTeamsHandler));
 
 export default router;

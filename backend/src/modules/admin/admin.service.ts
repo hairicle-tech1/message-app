@@ -1,4 +1,5 @@
 import { db } from '../../config/db.js';
+import { assignToDepartmentTeam } from '../users/users.service.js';
 
 export interface AuditLogEntry {
   id: string;
@@ -121,4 +122,17 @@ export async function getStats(): Promise<{
     messagesLast24h: Number(messages.rows[0].last_24h),
     totalConversations: Number(conversations.rows[0].total),
   };
+}
+
+// Backfill: assign every existing user with a department to their team
+export async function syncAllDepartmentTeams(): Promise<{ synced: number }> {
+  const result = await db.query<{ id: string; department: string }>(
+    `SELECT id, department FROM users WHERE department IS NOT NULL AND department != ''`,
+  );
+
+  for (const row of result.rows) {
+    await assignToDepartmentTeam(row.id, row.department);
+  }
+
+  return { synced: result.rows.length };
 }

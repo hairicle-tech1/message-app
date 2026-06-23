@@ -21,3 +21,8 @@ export async function getStatsHandler(_req: Request, res: Response) {
   const stats = await adminService.getStats();
   res.json({ stats });
 }
+
+export async function syncDepartmentTeamsHandler(_req: Request, res: Response) {
+  const result = await adminService.syncAllDepartmentTeams();
+  res.json(result);
+}
