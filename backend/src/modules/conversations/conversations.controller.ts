@@ -9,6 +9,7 @@ const createConversationSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().optional(),
   memberIds: z.array(z.string().uuid()).default([]),
+  teamId: z.string().uuid().optional(),
 });
 
 const memberSchema = z.object({

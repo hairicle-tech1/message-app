@@ -1,5 +1,6 @@
 import { db } from '../../config/db.js';
 import { HttpError } from '../../middleware/error.middleware.js';
+import { assertTeamMember } from '../teams/teams.service.js';
 
 export type ConversationType = 'direct' | 'group' | 'channel';
 
@@ -8,9 +9,20 @@ interface CreateConversationInput {
   name?: string;
   description?: string;
   memberIds: string[];
+  teamId?: string;  // optional — scopes conversation to a team
 }
 
 export async function createConversation(creatorId: string, input: CreateConversationInput) {
+  // If scoped to a team, verify creator and all members belong to that team
+  if (input.teamId) {
+    await assertTeamMember(input.teamId, creatorId);
+    for (const memberId of input.memberIds) {
+      await assertTeamMember(input.teamId, memberId).catch(() => {
+        throw new HttpError(400, `User ${memberId} is not a member of this team`);
+      });
+    }
+  }
+
   if (input.type === 'direct') {
     if (input.memberIds.length !== 1) {
       throw new HttpError(400, 'Direct conversations require exactly one other member');
@@ -40,9 +52,9 @@ export async function createConversation(creatorId: string, input: CreateConvers
     await client.query('BEGIN');
 
     const convResult = await client.query(
-      `INSERT INTO conversations (type, name, description, created_by)
-       VALUES ($1, $2, $3, $4) RETURNING id`,
-      [input.type, input.name ?? null, input.description ?? null, creatorId],
+      `INSERT INTO conversations (team_id, type, name, description, created_by)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [input.teamId ?? null, input.type, input.name ?? null, input.description ?? null, creatorId],
     );
     const conversationId: string = convResult.rows[0].id;
 
@@ -116,6 +128,11 @@ export async function listConversations(userId: string) {
      FROM conversations c
      JOIN conversation_members cm ON cm.conversation_id = c.id
      WHERE cm.user_id = $1
+       AND (
+         -- Show conversations that have no team, OR the user is a member of that team
+         c.team_id IS NULL
+         OR EXISTS (SELECT 1 FROM team_members tm WHERE tm.team_id = c.team_id AND tm.user_id = $1)
+       )
      ORDER BY c.updated_at DESC`,
     [userId],
   );
