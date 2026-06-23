@@ -28,6 +28,8 @@ export function AdminDashboard() {
   const [newDeptDesc, setNewDeptDesc] = useState('');
   const [editingDept, setEditingDept] = useState<Department | null>(null);
   const [deptMsg, setDeptMsg] = useState('');
+  const [expandedDept, setExpandedDept] = useState<string | null>(null);
+  const [assignTarget, setAssignTarget] = useState<{ deptName: string; userId: string }>({ deptName: '', userId: '' });
 
   // Audit logs
   const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -40,7 +42,7 @@ export function AdminDashboard() {
   }, []);
 
   useEffect(() => {
-    if (tab === 'users') loadUsers();
+    if (tab === 'users' || tab === 'departments') loadUsers();
     if (tab === 'logs') loadLogs();
   }, [tab]);
 
@@ -110,6 +112,17 @@ export function AdminDashboard() {
       setDeptMsg('Updated!');
     } catch (err) { setDeptMsg((err as Error).message); }
     setTimeout(() => setDeptMsg(''), 3000);
+  }
+
+  async function handleAssignToDept(userId: string, deptName: string) {
+    await apiFetch(`/api/admin/users/${userId}`, { method: 'PATCH', body: JSON.stringify({ department: deptName }) });
+    await loadUsers();
+    setAssignTarget({ deptName: '', userId: '' });
+  }
+
+  async function handleRemoveFromDept(userId: string) {
+    await apiFetch(`/api/admin/users/${userId}`, { method: 'PATCH', body: JSON.stringify({ department: null }) });
+    await loadUsers();
   }
 
   async function handleDeleteDept(id: string, name: string) {
@@ -328,7 +341,7 @@ export function AdminDashboard() {
 
         {/* ── DEPARTMENTS ── */}
         {tab === 'departments' && (
-          <div className="space-y-4 max-w-2xl">
+          <div className="space-y-4">
             {deptMsg && (
               <p className={`text-sm font-medium text-center py-2 rounded-xl ${deptMsg.includes('!') || deptMsg === 'Updated!' || deptMsg === 'Deleted.' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
                 {deptMsg}
@@ -336,8 +349,8 @@ export function AdminDashboard() {
             )}
 
             {/* Add department */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-              <h3 className="font-semibold text-slate-700 mb-4">Add department</h3>
+            <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+              <h3 className="font-semibold text-slate-700 mb-3">Add department</h3>
               <form onSubmit={handleCreateDept} className="flex gap-3">
                 <input value={newDeptName} onChange={(e) => setNewDeptName(e.target.value)}
                   placeholder="Department name" required
@@ -349,38 +362,119 @@ export function AdminDashboard() {
               </form>
             </div>
 
-            {/* Department list */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-              <div className="px-5 py-3 bg-slate-50 border-b border-slate-100">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{departments.length} departments</p>
-              </div>
-              <ul className="divide-y divide-slate-50">
-                {departments.map((d) => (
-                  <li key={d.id} className="px-5 py-3 flex items-center gap-3">
-                    {editingDept?.id === d.id ? (
-                      <form onSubmit={handleUpdateDept} className="flex gap-2 flex-1">
-                        <input value={editingDept.name} onChange={(e) => setEditingDept({ ...editingDept, name: e.target.value })}
-                          className="flex-1 border border-indigo-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-                        <input value={editingDept.description ?? ''} onChange={(e) => setEditingDept({ ...editingDept, description: e.target.value })}
-                          placeholder="Description"
-                          className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none" />
-                        <button type="submit" className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium">Save</button>
-                        <button type="button" onClick={() => setEditingDept(null)} className="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-xs">Cancel</button>
-                      </form>
-                    ) : (
-                      <>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-slate-800 text-sm">{d.name}</p>
-                          {d.description && <p className="text-xs text-slate-400">{d.description}</p>}
+            {/* Department cards with members */}
+            <div className="space-y-3">
+              {departments.map((d) => {
+                const members = users.filter((u) => u.department === d.name);
+                const isExpanded = expandedDept === d.id;
+                const unassigned = users.filter((u) => !u.department || u.department !== d.name);
+
+                return (
+                  <div key={d.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                    {/* Department header row */}
+                    <div className="flex items-center gap-3 px-5 py-4">
+                      {/* Expand toggle */}
+                      <button onClick={() => setExpandedDept(isExpanded ? null : d.id)}
+                        className="flex items-center gap-3 flex-1 min-w-0 text-left">
+                        <span className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
+                        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
+                          style={{ backgroundColor: '#6366f120', color: '#6366f1' }}>
+                          {d.name.slice(0, 1).toUpperCase()}
                         </div>
-                        <button onClick={() => setEditingDept(d)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors text-xs">Edit</button>
-                        <button onClick={() => handleDeleteDept(d.id, d.name)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors text-xs">Delete</button>
-                      </>
+                        <div className="min-w-0">
+                          {editingDept?.id === d.id ? null : (
+                            <>
+                              <p className="font-semibold text-slate-800">{d.name}</p>
+                              {d.description && <p className="text-xs text-slate-400">{d.description}</p>}
+                            </>
+                          )}
+                        </div>
+                        <span className="ml-auto flex-shrink-0 bg-indigo-100 text-indigo-700 text-xs font-bold px-2.5 py-1 rounded-full">
+                          {members.length} member{members.length !== 1 ? 's' : ''}
+                        </span>
+                      </button>
+                      {/* Actions */}
+                      <button onClick={() => setEditingDept(editingDept?.id === d.id ? null : d)}
+                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg text-xs transition-colors">Edit</button>
+                      <button onClick={() => handleDeleteDept(d.id, d.name)}
+                        className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg text-xs transition-colors">Delete</button>
+                    </div>
+
+                    {/* Inline edit form */}
+                    {editingDept?.id === d.id && (
+                      <div className="px-5 pb-4 border-t border-slate-100 pt-3">
+                        <form onSubmit={handleUpdateDept} className="flex gap-2">
+                          <input value={editingDept.name} onChange={(e) => setEditingDept({ ...editingDept, name: e.target.value })}
+                            className="flex-1 border border-indigo-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                          <input value={editingDept.description ?? ''} onChange={(e) => setEditingDept({ ...editingDept, description: e.target.value })}
+                            placeholder="Description"
+                            className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none" />
+                          <button type="submit" className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium">Save</button>
+                          <button type="button" onClick={() => setEditingDept(null)} className="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-xs">Cancel</button>
+                        </form>
+                      </div>
                     )}
-                  </li>
-                ))}
-                {departments.length === 0 && <li className="px-5 py-8 text-center text-slate-400 text-sm">No departments yet</li>}
-              </ul>
+
+                    {/* Expanded member list */}
+                    {isExpanded && (
+                      <div className="border-t border-slate-100">
+                        {members.length > 0 ? (
+                          <ul className="divide-y divide-slate-50">
+                            {members.map((u) => (
+                              <li key={u.id} className="flex items-center gap-3 px-5 py-3">
+                                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs flex-shrink-0">
+                                  {u.display_name.slice(0, 1).toUpperCase()}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-slate-800 truncate">{u.display_name}</p>
+                                  <p className="text-xs text-slate-400">@{u.username}</p>
+                                </div>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                  u.role === 'admin' ? 'bg-yellow-100 text-yellow-700' : 'bg-slate-100 text-slate-500'
+                                }`}>{u.role}</span>
+                                <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                                  u.status === 'active' ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-500'
+                                }`}>{u.status}</span>
+                                <button onClick={() => handleRemoveFromDept(u.id)}
+                                  title="Remove from department"
+                                  className="text-slate-300 hover:text-red-400 transition-colors text-sm ml-1">✕</button>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="px-5 py-4 text-sm text-slate-400 italic">No members in this department</p>
+                        )}
+
+                        {/* Assign user to this department */}
+                        <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex gap-2 items-center">
+                          <select
+                            value={assignTarget.deptName === d.name ? assignTarget.userId : ''}
+                            onChange={(e) => setAssignTarget({ deptName: d.name, userId: e.target.value })}
+                            className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                            <option value="">— Assign a user to {d.name} —</option>
+                            {unassigned.map((u) => (
+                              <option key={u.id} value={u.id}>
+                                {u.display_name} (@{u.username}){u.department ? ` · currently in ${u.department}` : ''}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            disabled={!assignTarget.userId || assignTarget.deptName !== d.name}
+                            onClick={() => handleAssignToDept(assignTarget.userId, d.name)}
+                            className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition-colors">
+                            Assign
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {departments.length === 0 && (
+                <div className="bg-white rounded-2xl p-10 text-center text-slate-400 text-sm shadow-sm border border-slate-100">
+                  No departments yet — add one above
+                </div>
+              )}
             </div>
           </div>
         )}

@@ -124,6 +124,41 @@ export async function getStats(): Promise<{
   };
 }
 
+// Update any user's department and/or role (admin action)
+export async function adminUpdateUser(
+  targetUserId: string,
+  fields: { department?: string | null; role?: string },
+): Promise<void> {
+  const setClauses: string[] = ['updated_at = now()'];
+  const params: unknown[] = [];
+
+  if (fields.department !== undefined) {
+    params.push(fields.department ?? null);
+    setClauses.push(`department = $${params.length}`);
+  }
+  if (fields.role !== undefined) {
+    params.push(fields.role);
+    setClauses.push(`role = $${params.length}`);
+  }
+  if (params.length === 0) return;
+
+  params.push(targetUserId);
+  await db.query(
+    `UPDATE users SET ${setClauses.join(', ')} WHERE id = $${params.length}`,
+    params,
+  );
+
+  // Re-sync teams if department changed
+  if (fields.department !== undefined) {
+    const userRes = await db.query<{ role: string; department: string | null }>(
+      'SELECT role, department FROM users WHERE id = $1',
+      [targetUserId],
+    );
+    const u = userRes.rows[0];
+    if (u) await syncUserTeams(targetUserId, u.role, u.department);
+  }
+}
+
 // Backfill: assign ALL active users to their correct teams
 // (department team + role team + All Employees)
 export async function syncAllDepartmentTeams(): Promise<{ synced: number }> {

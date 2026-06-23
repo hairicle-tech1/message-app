@@ -22,6 +22,14 @@ export async function getStatsHandler(_req: Request, res: Response) {
   res.json({ stats });
 }
 
+export async function adminUpdateUserHandler(req: Request, res: Response) {
+  const body = z
+    .object({ department: z.string().nullable().optional(), role: z.string().optional() })
+    .parse(req.body);
+  await adminService.adminUpdateUser(req.params.userId, body);
+  res.status(204).send();
+}
+
 export async function syncDepartmentTeamsHandler(_req: Request, res: Response) {
   const result = await adminService.syncAllDepartmentTeams();
   res.json(result);
