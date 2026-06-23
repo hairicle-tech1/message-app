@@ -145,6 +145,7 @@ export async function updateProfile(userId: string, fields: { displayName?: stri
     params,
   );
   const row = result.rows[0];
+  if (!row) throw new HttpError(404, 'User not found');
 
   // Sync department team membership when department changes
   if (fields.department !== undefined && oldDepartment !== (fields.department || null)) {

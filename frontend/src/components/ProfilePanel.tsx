@@ -15,11 +15,12 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [avatarKey, setAvatarKey] = useState(Date.now()); // bust cache after upload
 
-  // Profile tab state
-  const [displayName, setDisplayName] = useState('');
+  // Profile tab state — initialise from user immediately so fields are never blank
+  const [displayName, setDisplayName] = useState(user?.displayName ?? '');
   const [department, setDepartment] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
+  const [loadError, setLoadError] = useState('');
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   // Security tab state
@@ -38,12 +39,18 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
   const [prefsMsg, setPrefsMsg] = useState('');
 
   useEffect(() => {
-    profileApi.getMyProfile().then(({ profile }) => {
-      setProfile(profile);
-      setDisplayName(profile.displayName);
-      setDepartment(profile.department ?? '');
-    });
-    profileApi.getNotificationPrefs().then(({ prefs }) => setPrefs(prefs));
+    profileApi.getMyProfile()
+      .then(({ profile }) => {
+        setProfile(profile);
+        setDisplayName(profile.displayName);
+        setDepartment(profile.department ?? '');
+        setLoadError('');
+      })
+      .catch((err: Error) => setLoadError(err.message));
+
+    profileApi.getNotificationPrefs()
+      .then(({ prefs }) => setPrefs(prefs))
+      .catch(() => {});
   }, []);
 
   // ── Profile ───────────────────────────────────────────────────────────────
@@ -225,6 +232,11 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
           {/* ── PROFILE tab ── */}
           {tab === 'profile' && (
             <form onSubmit={handleSaveProfile} className="space-y-4">
+              {loadError && (
+                <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 text-xs text-red-600">
+                  Failed to load profile: {loadError}
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-semibold text-slate-500 mb-1">Display Name</label>
                 <input value={displayName} onChange={(e) => setDisplayName(e.target.value)}
