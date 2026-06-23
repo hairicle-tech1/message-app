@@ -125,7 +125,7 @@ export interface ConversationAttachmentItem {
 export interface Message {
   id: string;
   conversationId: string;
-  senderId: string;
+  senderId: string | null;  // null when the sender's account has been deleted
   type: MessageType;
   ciphertext: string;
   replyToMessageId: string | null;
