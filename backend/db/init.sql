@@ -93,7 +93,7 @@ CREATE TABLE teams (
     name        TEXT NOT NULL,
     description TEXT,
     avatar_url  TEXT,
-    created_by  UUID NOT NULL REFERENCES users(id),
+    created_by  UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -150,7 +150,7 @@ CREATE TABLE notification_preferences (
 CREATE TABLE messages (
     id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     conversation_id      UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-    sender_id            UUID NOT NULL REFERENCES users(id),
+    sender_id            UUID REFERENCES users(id) ON DELETE SET NULL,
     type                 message_type NOT NULL DEFAULT 'text',
     ciphertext           BYTEA NOT NULL,
     reply_to_message_id  UUID REFERENCES messages(id),
@@ -192,7 +192,7 @@ CREATE TABLE pinned_messages (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     message_id      UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
-    pinned_by       UUID NOT NULL REFERENCES users(id),
+    pinned_by       UUID REFERENCES users(id) ON DELETE CASCADE,
     pinned_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (conversation_id, message_id)
 );
@@ -216,7 +216,7 @@ CREATE INDEX idx_message_reactions_message_id ON message_reactions(message_id);
 CREATE TABLE files (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     message_id      UUID REFERENCES messages(id) ON DELETE CASCADE,
-    uploader_id     UUID NOT NULL REFERENCES users(id),
+    uploader_id     UUID REFERENCES users(id) ON DELETE SET NULL,
     storage_key     TEXT NOT NULL,
     file_name       TEXT NOT NULL,
     mime_type       TEXT NOT NULL,
@@ -233,7 +233,7 @@ CREATE INDEX idx_files_message_id ON files(message_id);
 CREATE TABLE calls (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-    initiator_id    UUID NOT NULL REFERENCES users(id),
+    initiator_id    UUID REFERENCES users(id) ON DELETE SET NULL,
     type            call_type NOT NULL,
     started_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     ended_at        TIMESTAMPTZ
@@ -252,7 +252,7 @@ CREATE TABLE call_participants (
 
 CREATE TABLE audit_logs (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id         UUID REFERENCES users(id),
+    user_id         UUID REFERENCES users(id) ON DELETE SET NULL,
     action          TEXT NOT NULL,
     target_type     TEXT,
     target_id       UUID,
