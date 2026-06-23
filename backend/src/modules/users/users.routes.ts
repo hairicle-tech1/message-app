@@ -4,12 +4,14 @@ import { requireAuth, requireRole } from '../../middleware/auth.middleware.js';
 import { asyncHandler } from '../../utils/async-handler.js';
 import {
   changePasswordHandler,
+  clearPushTokenHandler,
   createUserHandler,
   getMyProfileHandler,
   getNotificationPrefsHandler,
   getUserAvatarHandler,
   listDirectoryHandler,
   listUsersHandler,
+  registerPushTokenHandler,
   updateAvatarHandler,
   updateNotificationPrefsHandler,
   updateProfileHandler,
@@ -28,6 +30,8 @@ router.post('/me/avatar', upload.single('avatar'), asyncHandler(updateAvatarHand
 router.post('/me/password', asyncHandler(changePasswordHandler));
 router.get('/me/notifications', asyncHandler(getNotificationPrefsHandler));
 router.patch('/me/notifications', asyncHandler(updateNotificationPrefsHandler));
+router.put('/me/devices/:deviceId/push-token', asyncHandler(registerPushTokenHandler));
+router.delete('/me/devices/:deviceId/push-token', asyncHandler(clearPushTokenHandler));
 
 // Avatar by user ID (any authenticated user can fetch)
 router.get('/:userId/avatar', asyncHandler(getUserAvatarHandler));

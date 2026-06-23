@@ -204,7 +204,8 @@ CREATE TABLE call_participants (
     call_id         UUID NOT NULL REFERENCES calls(id) ON DELETE CASCADE,
     user_id         UUID NOT NULL REFERENCES users(id),
     joined_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    left_at         TIMESTAMPTZ
+    left_at         TIMESTAMPTZ,
+    UNIQUE (call_id, user_id)
 );
 
 -- Audit logs

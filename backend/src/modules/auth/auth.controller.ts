@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { HttpError } from '../../middleware/error.middleware.js';
+import { writeAuditLog } from '../../utils/audit.js';
 import * as authService from './auth.service.js';
 import * as totpService from './totp.service.js';
 
@@ -14,8 +15,15 @@ const totpCodeSchema = z.object({ code: z.string().length(6) });
 
 export async function loginHandler(req: Request, res: Response) {
   const body = loginSchema.parse(req.body);
-  const result = await authService.login(body.email, body.password, body.deviceName);
-  res.json(result);
+  try {
+    const result = await authService.login(body.email, body.password, body.deviceName);
+    const userId = 'user' in result ? (result.user as { id: string }).id : undefined;
+    writeAuditLog('auth.login', { userId, ipAddress: req.ip, metadata: { email: body.email } });
+    res.json(result);
+  } catch (err) {
+    writeAuditLog('auth.login_failed', { ipAddress: req.ip, metadata: { email: body.email } });
+    throw err;
+  }
 }
 
 export async function completeTotpLoginHandler(req: Request, res: Response) {
@@ -43,11 +51,13 @@ export async function totpSetupHandler(req: Request, res: Response) {
 export async function totpEnableHandler(req: Request, res: Response) {
   const { code } = totpCodeSchema.parse(req.body);
   await totpService.enableTotp(req.user!.id, code);
+  writeAuditLog('auth.totp_enabled', { userId: req.user!.id, ipAddress: req.ip });
   res.json({ totpEnabled: true });
 }
 
 export async function totpDisableHandler(req: Request, res: Response) {
   const { code } = totpCodeSchema.parse(req.body);
   await totpService.disableTotp(req.user!.id, code);
+  writeAuditLog('auth.totp_disabled', { userId: req.user!.id, ipAddress: req.ip });
   res.json({ totpEnabled: false });
 }

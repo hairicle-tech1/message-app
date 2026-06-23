@@ -659,6 +659,31 @@ export const openApiSpec = {
     },
 
     // ── Messages ─────────────────────────────────────────────────────────────
+    '/api/messages/undelivered': {
+      get: {
+        tags: ['Messages'],
+        summary: 'Fetch undelivered messages for the current device (offline sync)',
+        description:
+          'Returns up to 200 messages that arrived while this device was offline (status=sent). ' +
+          'Automatically marks them as delivered. Call once on app launch or reconnect.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Undelivered messages, oldest first',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    messages: { type: 'array', items: { $ref: '#/components/schemas/Message' } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
     '/api/messages/search': {
       get: {
         tags: ['Messages'],
@@ -855,6 +880,192 @@ export const openApiSpec = {
           200: { description: 'Deleted — returns { id, conversationId, deletedAt }' },
           403: { description: 'Not your message' },
         },
+      },
+    },
+
+    // ── Calls ─────────────────────────────────────────────────────────────────
+    '/api/calls': {
+      post: {
+        tags: ['Calls'],
+        summary: 'Initiate a call in a conversation',
+        description: 'Creates the call record and emits `call:incoming` to all other members via Socket.IO. Also sends a push notification to offline members.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['conversationId', 'type'],
+                properties: {
+                  conversationId: { type: 'string', format: 'uuid' },
+                  type: { type: 'string', enum: ['audio', 'video'] },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: { description: 'Call started — returns { call }' },
+          403: { description: 'Not a member of this conversation' },
+        },
+      },
+      get: {
+        tags: ['Calls'],
+        summary: 'Get call history for a conversation',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'conversationId', in: 'query', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          200: { description: 'Array of call records with participants and duration' },
+        },
+      },
+    },
+    '/api/calls/{id}': {
+      get: {
+        tags: ['Calls'],
+        summary: 'Get a specific call record',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { 200: { description: 'Call record with participants' }, 404: { description: 'Not found' } },
+      },
+    },
+    '/api/calls/{id}/join': {
+      post: {
+        tags: ['Calls'],
+        summary: 'Join an active call (REST — also emit call:answer via socket)',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { 200: { description: 'Updated call record' }, 400: { description: 'Call already ended' } },
+      },
+    },
+    '/api/calls/{id}/leave': {
+      post: {
+        tags: ['Calls'],
+        summary: 'Leave a call (auto-ends when last participant leaves)',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { 200: { description: '{ callEnded: boolean }' } },
+      },
+    },
+    '/api/calls/{id}/end': {
+      post: {
+        tags: ['Calls'],
+        summary: 'Force-end a call for all participants',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { 204: { description: 'Call ended' } },
+      },
+    },
+
+    // ── Admin ─────────────────────────────────────────────────────────────────
+    '/api/admin/stats': {
+      get: {
+        tags: ['Admin'],
+        summary: 'Platform statistics (admin only)',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: {
+            description: 'Usage stats',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    stats: {
+                      type: 'object',
+                      properties: {
+                        totalUsers: { type: 'integer' },
+                        activeUsers: { type: 'integer' },
+                        totalMessages: { type: 'integer' },
+                        messagesLast24h: { type: 'integer' },
+                        totalConversations: { type: 'integer' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          403: { description: 'Admin role required' },
+        },
+      },
+    },
+    '/api/admin/audit-logs': {
+      get: {
+        tags: ['Admin'],
+        summary: 'Query audit logs (admin only)',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'userId', in: 'query', schema: { type: 'string', format: 'uuid' }, description: 'Filter by actor' },
+          { name: 'action', in: 'query', schema: { type: 'string' }, description: 'e.g. auth.login, messages.deleted' },
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 50, maximum: 200 } },
+          { name: 'offset', in: 'query', schema: { type: 'integer', default: 0 } },
+        ],
+        responses: {
+          200: {
+            description: 'Paginated audit log entries',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    total: { type: 'integer' },
+                    logs: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'string', format: 'uuid' },
+                          userId: { type: 'string', format: 'uuid', nullable: true },
+                          userEmail: { type: 'string', nullable: true },
+                          action: { type: 'string' },
+                          targetType: { type: 'string', nullable: true },
+                          targetId: { type: 'string', format: 'uuid', nullable: true },
+                          ipAddress: { type: 'string', nullable: true },
+                          metadata: { type: 'object', nullable: true },
+                          createdAt: { type: 'string', format: 'date-time' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          403: { description: 'Admin role required' },
+        },
+      },
+    },
+    '/api/users/me/devices/{deviceId}/push-token': {
+      put: {
+        tags: ['Users'],
+        summary: 'Register or update a push notification token for a device',
+        description: 'Store an FCM or APNs token so the server can send push notifications to this device.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'deviceId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { type: 'object', required: ['token'], properties: { token: { type: 'string', description: 'FCM registration token or APNs device token' } } },
+            },
+          },
+        },
+        responses: {
+          204: { description: 'Token saved' },
+          404: { description: 'Device not found or not owned by this user' },
+        },
+      },
+      delete: {
+        tags: ['Users'],
+        summary: 'Clear push notification token (logout / unregister)',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'deviceId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { 204: { description: 'Token cleared' } },
       },
     },
 
