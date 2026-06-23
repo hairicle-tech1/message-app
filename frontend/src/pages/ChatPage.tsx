@@ -122,15 +122,45 @@ export function ChatPage() {
           </button>
         </div>
 
-        {/* Teams section */}
-        {teams.length > 0 && (
-          <div className="px-3 pt-3 pb-1 flex-shrink-0">
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-1 mb-1">Teams</p>
+        {/* Teams section — always visible */}
+        <div className="px-3 pt-3 pb-2 border-b border-slate-800 flex-shrink-0">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Teams</span>
+            <button
+              onClick={() => setShowNewTeam((v) => !v)}
+              className="w-5 h-5 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 transition-colors text-sm"
+              title="New team"
+            >
+              +
+            </button>
+          </div>
+
+          {/* New team form */}
+          {showNewTeam && (
+            <form onSubmit={handleCreateTeam} className="flex gap-1 mb-2">
+              <input
+                autoFocus
+                value={newTeamName}
+                onChange={(e) => setNewTeamName(e.target.value)}
+                placeholder="e.g. Sales Team"
+                className="flex-1 bg-slate-700 text-white text-xs rounded-lg px-2 py-1.5 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+              />
+              <button type="submit" className="px-2 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium">
+                Add
+              </button>
+            </form>
+          )}
+
+          {teams.length === 0 ? (
+            <p className="text-xs text-slate-600 italic px-1">No teams yet — click + to create one</p>
+          ) : (
             <div className="flex flex-wrap gap-1">
               <button
                 onClick={() => setSelectedTeamId(null)}
                 className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-                  selectedTeamId === null ? 'bg-indigo-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                  selectedTeamId === null
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600 hover:text-white'
                 }`}
               >
                 All
@@ -140,54 +170,17 @@ export function ChatPage() {
                   key={t.id}
                   onClick={() => setSelectedTeamId(t.id === selectedTeamId ? null : t.id)}
                   className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-                    selectedTeamId === t.id ? 'bg-indigo-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                    selectedTeamId === t.id
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600 hover:text-white'
                   }`}
                 >
                   {t.name}
                 </button>
               ))}
-              <button
-                onClick={() => setShowNewTeam((v) => !v)}
-                className="px-2 py-1 rounded-lg text-xs text-slate-500 hover:text-slate-300 hover:bg-slate-700 transition-colors"
-                title="Create team"
-              >
-                +
-              </button>
             </div>
-            {showNewTeam && (
-              <form onSubmit={handleCreateTeam} className="flex gap-1 mt-2">
-                <input
-                  value={newTeamName}
-                  onChange={(e) => setNewTeamName(e.target.value)}
-                  placeholder="Team name"
-                  className="flex-1 bg-slate-700 text-white text-xs rounded-lg px-2 py-1.5 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                />
-                <button type="submit" className="px-2 py-1 bg-indigo-600 text-white rounded-lg text-xs">Add</button>
-              </form>
-            )}
-          </div>
-        )}
-        {teams.length === 0 && (
-          <div className="px-3 pt-3 flex-shrink-0">
-            <button
-              onClick={() => setShowNewTeam((v) => !v)}
-              className="w-full text-xs text-slate-500 hover:text-slate-300 py-1 text-left px-1 flex items-center gap-1"
-            >
-              <span>+</span> Create a team
-            </button>
-            {showNewTeam && (
-              <form onSubmit={handleCreateTeam} className="flex gap-1 mt-1">
-                <input
-                  value={newTeamName}
-                  onChange={(e) => setNewTeamName(e.target.value)}
-                  placeholder="Team name"
-                  className="flex-1 bg-slate-700 text-white text-xs rounded-lg px-2 py-1.5 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                />
-                <button type="submit" className="px-2 py-1 bg-indigo-600 text-white rounded-lg text-xs">Add</button>
-              </form>
-            )}
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Section label */}
         <div className="px-4 pt-3 pb-1 flex-shrink-0">
