@@ -24,9 +24,18 @@ export async function getStatsHandler(_req: Request, res: Response) {
 
 export async function adminUpdateUserHandler(req: Request, res: Response) {
   const body = z
-    .object({ department: z.string().nullable().optional(), role: z.string().optional() })
+    .object({
+      department: z.string().nullable().optional(),
+      role: z.string().optional(),
+      status: z.enum(['active', 'disabled']).optional(),
+    })
     .parse(req.body);
   await adminService.adminUpdateUser(req.params.userId, body);
+  res.status(204).send();
+}
+
+export async function adminDeleteUserHandler(req: Request, res: Response) {
+  await adminService.adminDeleteUser(req.params.userId);
   res.status(204).send();
 }
 

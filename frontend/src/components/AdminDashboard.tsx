@@ -82,12 +82,27 @@ export function AdminDashboard() {
     } catch (err) { setCreateMsg((err as Error).message); }
   }
 
-  async function handleDisableUser(userId: string, currentStatus: string) {
-    const confirm = window.confirm(currentStatus === 'active' ? 'Disable this user?' : 'Enable this user?');
-    if (!confirm) return;
-    // Use PATCH profile workaround — backend doesn't have a disable endpoint yet
-    // For now just refresh with an alert
-    window.alert('User status management coming soon.');
+  async function handleToggleStatus(userId: string, currentStatus: string) {
+    const next = currentStatus === 'active' ? 'disabled' : 'active';
+    const msg = next === 'disabled'
+      ? 'Disable this user? They will not be able to log in.'
+      : 'Re-enable this user?';
+    if (!window.confirm(msg)) return;
+    await apiFetch(`/api/admin/users/${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: next }),
+    });
+    await loadUsers();
+  }
+
+  async function handleDeleteUser(userId: string, displayName: string) {
+    const confirmed = window.confirm(
+      `Permanently delete "${displayName}"?\n\nThis cannot be undone. All their data (devices, team memberships, reactions) will be removed.`,
+    );
+    if (!confirmed) return;
+    await apiFetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+    setUsers((prev) => prev.filter((u) => u.id !== userId));
+    apiFetch<{ stats: Stats }>('/api/admin/stats').then(({ stats }) => setStats(stats)).catch(() => {});
   }
 
   async function handleCreateDept(e: { preventDefault(): void }) {
@@ -312,19 +327,23 @@ export function AdminDashboard() {
                       </td>
                       <td className="px-5 py-3 text-slate-400 text-xs">{new Date(u.created_at).toLocaleDateString()}</td>
                       <td className="px-5 py-3">
-                        <div className="flex gap-1 justify-end">
+                        <div className="flex gap-1 justify-end items-center">
                           <button onClick={() => navigator.clipboard.writeText(u.id)}
                             title="Copy user ID"
-                            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors text-xs">
-                            ID
+                            className="px-2 py-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors text-xs">
+                            Copy ID
                           </button>
-                          <button onClick={() => handleDisableUser(u.id, u.status)}
-                            className={`p-1.5 rounded-lg text-xs transition-colors ${
+                          <button onClick={() => handleToggleStatus(u.id, u.status)}
+                            className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
                               u.status === 'active'
-                                ? 'text-amber-500 hover:bg-amber-50'
-                                : 'text-emerald-600 hover:bg-emerald-50'
+                                ? 'text-amber-600 hover:bg-amber-50 border border-amber-200'
+                                : 'text-emerald-600 hover:bg-emerald-50 border border-emerald-200'
                             }`}>
-                            {u.status === 'active' ? 'Disable' : 'Enable'}
+                            {u.status === 'active' ? '⏸ Disable' : '▶ Enable'}
+                          </button>
+                          <button onClick={() => handleDeleteUser(u.id, u.display_name)}
+                            className="px-2 py-1 rounded-lg text-xs font-medium text-red-500 hover:bg-red-50 border border-red-200 transition-colors">
+                            🗑 Delete
                           </button>
                         </div>
                       </td>

@@ -11,5 +11,6 @@ router.get('/audit-logs', asyncHandler(adminController.listAuditLogsHandler));
 router.get('/stats', asyncHandler(adminController.getStatsHandler));
 router.post('/sync-department-teams', asyncHandler(adminController.syncDepartmentTeamsHandler));
 router.patch('/users/:userId', asyncHandler(adminController.adminUpdateUserHandler));
+router.delete('/users/:userId', asyncHandler(adminController.adminDeleteUserHandler));
 
 export default router;

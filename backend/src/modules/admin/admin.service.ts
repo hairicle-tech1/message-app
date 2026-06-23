@@ -124,10 +124,10 @@ export async function getStats(): Promise<{
   };
 }
 
-// Update any user's department and/or role (admin action)
+// Update any user's department, role, or status (admin action)
 export async function adminUpdateUser(
   targetUserId: string,
-  fields: { department?: string | null; role?: string },
+  fields: { department?: string | null; role?: string; status?: 'active' | 'disabled' },
 ): Promise<void> {
   const setClauses: string[] = ['updated_at = now()'];
   const params: unknown[] = [];
@@ -139,6 +139,10 @@ export async function adminUpdateUser(
   if (fields.role !== undefined) {
     params.push(fields.role);
     setClauses.push(`role = $${params.length}`);
+  }
+  if (fields.status !== undefined) {
+    params.push(fields.status);
+    setClauses.push(`status = $${params.length}`);
   }
   if (params.length === 0) return;
 
@@ -157,6 +161,10 @@ export async function adminUpdateUser(
     const u = userRes.rows[0];
     if (u) await syncUserTeams(targetUserId, u.role, u.department);
   }
+}
+
+export async function adminDeleteUser(targetUserId: string): Promise<void> {
+  await db.query('DELETE FROM users WHERE id = $1', [targetUserId]);
 }
 
 // Backfill: assign ALL active users to their correct teams
