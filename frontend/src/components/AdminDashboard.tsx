@@ -1,0 +1,444 @@
+import { useEffect, useState } from 'react';
+import { apiFetch } from '../api/client';
+import * as departmentsApi from '../api/departments';
+import type { Department } from '../api/departments';
+
+type AdminTab = 'overview' | 'users' | 'departments' | 'logs';
+
+interface Stats { totalUsers: number; activeUsers: number; totalMessages: number; messagesLast24h: number; totalConversations: number }
+interface AdminUser { id: string; email: string; username: string; display_name: string; role: string; department: string | null; status: string; created_at: string }
+interface AuditLog { id: string; action: string; userEmail: string | null; ipAddress: string | null; createdAt: string; metadata: Record<string, unknown> | null }
+
+export function AdminDashboard() {
+  const [tab, setTab] = useState<AdminTab>('overview');
+
+  // Overview
+  const [stats, setStats] = useState<Stats | null>(null);
+
+  // Users
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [userSearch, setUserSearch] = useState('');
+  const [showCreateUser, setShowCreateUser] = useState(false);
+  const [newUser, setNewUser] = useState({ email: '', username: '', displayName: '', password: '', role: 'staff', department: '' });
+  const [createMsg, setCreateMsg] = useState('');
+  const [departments, setDepartments] = useState<Department[]>([]);
+
+  // Departments
+  const [newDeptName, setNewDeptName] = useState('');
+  const [newDeptDesc, setNewDeptDesc] = useState('');
+  const [editingDept, setEditingDept] = useState<Department | null>(null);
+  const [deptMsg, setDeptMsg] = useState('');
+
+  // Audit logs
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [logAction, setLogAction] = useState('');
+  const [logTotal, setLogTotal] = useState(0);
+
+  useEffect(() => {
+    apiFetch<{ stats: Stats }>('/api/admin/stats').then(({ stats }) => setStats(stats)).catch(() => {});
+    departmentsApi.listDepartments().then(({ departments }) => setDepartments(departments)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (tab === 'users') loadUsers();
+    if (tab === 'logs') loadLogs();
+  }, [tab]);
+
+  async function loadUsers() {
+    const res = await apiFetch<{ users: AdminUser[] }>('/api/users');
+    setUsers(res.users);
+  }
+
+  async function loadLogs() {
+    const params = new URLSearchParams({ limit: '50' });
+    if (logAction) params.set('action', logAction);
+    const res = await apiFetch<{ logs: AuditLog[]; total: number }>(`/api/admin/audit-logs?${params}`);
+    setLogs(res.logs);
+    setLogTotal(res.total);
+  }
+
+  async function handleCreateUser(e: { preventDefault(): void }) {
+    e.preventDefault();
+    setCreateMsg('');
+    try {
+      await apiFetch('/api/users', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: newUser.email,
+          username: newUser.username,
+          displayName: newUser.displayName,
+          password: newUser.password,
+          role: newUser.role || 'staff',
+          department: newUser.department || undefined,
+        }),
+      });
+      setCreateMsg('User created!');
+      setNewUser({ email: '', username: '', displayName: '', password: '', role: 'staff', department: '' });
+      setShowCreateUser(false);
+      loadUsers();
+      apiFetch<{ stats: Stats }>('/api/admin/stats').then(({ stats }) => setStats(stats)).catch(() => {});
+    } catch (err) { setCreateMsg((err as Error).message); }
+  }
+
+  async function handleDisableUser(userId: string, currentStatus: string) {
+    const confirm = window.confirm(currentStatus === 'active' ? 'Disable this user?' : 'Enable this user?');
+    if (!confirm) return;
+    // Use PATCH profile workaround — backend doesn't have a disable endpoint yet
+    // For now just refresh with an alert
+    window.alert('User status management coming soon.');
+  }
+
+  async function handleCreateDept(e: { preventDefault(): void }) {
+    e.preventDefault();
+    setDeptMsg('');
+    try {
+      const { department } = await departmentsApi.createDepartment(newDeptName, newDeptDesc || undefined);
+      setDepartments((prev) => [...prev, department].sort((a, b) => a.name.localeCompare(b.name)));
+      setNewDeptName(''); setNewDeptDesc('');
+      setDeptMsg('Department added!');
+    } catch (err) { setDeptMsg((err as Error).message); }
+    setTimeout(() => setDeptMsg(''), 3000);
+  }
+
+  async function handleUpdateDept(e: { preventDefault(): void }) {
+    e.preventDefault();
+    if (!editingDept) return;
+    try {
+      const { department } = await departmentsApi.updateDepartment(editingDept.id, { name: editingDept.name, description: editingDept.description });
+      setDepartments((prev) => prev.map((d) => d.id === department.id ? department : d));
+      setEditingDept(null);
+      setDeptMsg('Updated!');
+    } catch (err) { setDeptMsg((err as Error).message); }
+    setTimeout(() => setDeptMsg(''), 3000);
+  }
+
+  async function handleDeleteDept(id: string, name: string) {
+    if (!window.confirm(`Delete department "${name}"? Users with this department won't be removed from teams.`)) return;
+    try {
+      await departmentsApi.deleteDepartment(id);
+      setDepartments((prev) => prev.filter((d) => d.id !== id));
+      setDeptMsg('Deleted.');
+    } catch (err) { setDeptMsg((err as Error).message); }
+    setTimeout(() => setDeptMsg(''), 3000);
+  }
+
+  const filteredUsers = users.filter((u) =>
+    !userSearch ||
+    u.display_name.toLowerCase().includes(userSearch.toLowerCase()) ||
+    u.email.toLowerCase().includes(userSearch.toLowerCase()) ||
+    u.username.toLowerCase().includes(userSearch.toLowerCase()),
+  );
+
+  const tabs: { id: AdminTab; label: string; icon: string }[] = [
+    { id: 'overview',     label: 'Overview',    icon: '📊' },
+    { id: 'users',        label: 'Users',       icon: '👥' },
+    { id: 'departments',  label: 'Departments', icon: '🏢' },
+    { id: 'logs',         label: 'Audit Logs',  icon: '📋' },
+  ];
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
+      {/* Header + tabs */}
+      <div className="bg-white border-b border-slate-200 flex-shrink-0">
+        <div className="px-8 pt-5 pb-0 flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-slate-900">Admin Dashboard</h1>
+            <p className="text-sm text-slate-400">Manage users, departments, and platform settings</p>
+          </div>
+        </div>
+        <div className="flex px-8 mt-3 gap-0">
+          {tabs.map((t) => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                tab === t.id ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}>
+              <span>{t.icon}</span>{t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-8">
+
+        {/* ── OVERVIEW ── */}
+        {tab === 'overview' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+              {stats ? ([
+                { key: 'totalUsers',         label: 'Total Users',     icon: '👥', color: '#6366f1' },
+                { key: 'activeUsers',        label: 'Active Users',    icon: '✅', color: '#10b981' },
+                { key: 'totalMessages',      label: 'Messages',        icon: '💬', color: '#3b82f6' },
+                { key: 'messagesLast24h',    label: 'Messages (24h)',  icon: '📈', color: '#f97316' },
+                { key: 'totalConversations', label: 'Conversations',   icon: '🗂️', color: '#8b5cf6' },
+              ] as const).map(({ key, label, icon, color }) => (
+                <div key={key} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl mb-3"
+                    style={{ backgroundColor: `${color}20` }}>{icon}</div>
+                  <p className="text-3xl font-bold text-slate-900">{(stats as unknown as Record<string, number>)[key] ?? 0}</p>
+                  <p className="text-sm text-slate-500 mt-1">{label}</p>
+                </div>
+              )) : <p className="col-span-5 text-slate-400 text-sm">Loading…</p>}
+            </div>
+
+            {/* Quick actions */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+              <h3 className="font-semibold text-slate-700 mb-4">Quick actions</h3>
+              <div className="flex flex-wrap gap-3">
+                <button onClick={() => {
+                  apiFetch<{ synced: number }>('/api/admin/sync-department-teams', { method: 'POST' })
+                    .then(({ synced }) => { window.alert(`Synced ${synced} users to department teams.`); apiFetch<{stats:Stats}>('/api/admin/stats').then(({stats})=>setStats(stats)).catch(()=>{}); })
+                    .catch((e) => window.alert((e as Error).message));
+                }} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium transition-colors">
+                  🔄 Sync department teams
+                </button>
+                <button onClick={() => setTab('users')} className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-medium transition-colors">
+                  👥 Manage users
+                </button>
+                <button onClick={() => setTab('departments')} className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-medium transition-colors">
+                  🏢 Manage departments
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── USERS ── */}
+        {tab === 'users' && (
+          <div className="space-y-4">
+            {/* Toolbar */}
+            <div className="flex items-center gap-3">
+              <input value={userSearch} onChange={(e) => setUserSearch(e.target.value)}
+                placeholder="Search by name, email or username…"
+                className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              <button onClick={() => setShowCreateUser((v) => !v)}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium transition-colors">
+                + New user
+              </button>
+              <button onClick={loadUsers} className="px-3 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl text-sm text-slate-500">
+                ↻
+              </button>
+            </div>
+
+            {/* Create user form */}
+            {showCreateUser && (
+              <form onSubmit={handleCreateUser} className="bg-white rounded-2xl p-6 shadow-sm border border-indigo-100 grid grid-cols-2 gap-4">
+                <h3 className="col-span-2 font-semibold text-slate-700">Create new user</h3>
+                {[
+                  { key: 'displayName', label: 'Display name', placeholder: 'Alice Smith' },
+                  { key: 'username',    label: 'Username',     placeholder: 'alice' },
+                  { key: 'email',       label: 'Email',        placeholder: 'alice@company.local' },
+                  { key: 'password',    label: 'Password',     placeholder: 'min 8 characters', type: 'password' },
+                ].map(({ key, label, placeholder, type }) => (
+                  <div key={key}>
+                    <label className="block text-xs font-semibold text-slate-500 mb-1">{label}</label>
+                    <input type={type ?? 'text'} value={(newUser as Record<string, string>)[key]}
+                      onChange={(e) => setNewUser((prev) => ({ ...prev, [key]: e.target.value }))}
+                      placeholder={placeholder} required
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                  </div>
+                ))}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Role</label>
+                  <input value={newUser.role} onChange={(e) => setNewUser((p) => ({ ...p, role: e.target.value }))}
+                    placeholder="staff, admin, manager…"
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Department</label>
+                  <select value={newUser.department} onChange={(e) => setNewUser((p) => ({ ...p, department: e.target.value }))}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+                    <option value="">— None —</option>
+                    {departments.map((d) => <option key={d.id} value={d.name}>{d.name}</option>)}
+                  </select>
+                </div>
+                {createMsg && <p className={`col-span-2 text-sm text-center ${createMsg.includes('!') ? 'text-emerald-600' : 'text-red-500'}`}>{createMsg}</p>}
+                <div className="col-span-2 flex gap-3">
+                  <button type="submit" className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold">Create user</button>
+                  <button type="button" onClick={() => setShowCreateUser(false)} className="px-4 py-2 border border-slate-200 rounded-xl text-sm text-slate-600">Cancel</button>
+                </div>
+              </form>
+            )}
+
+            {/* Users table */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50 text-left">
+                    <th className="px-5 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wider">User</th>
+                    <th className="px-5 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wider">Department</th>
+                    <th className="px-5 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wider">Role</th>
+                    <th className="px-5 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wider">Status</th>
+                    <th className="px-5 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wider">Joined</th>
+                    <th className="px-5 py-3"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {filteredUsers.map((u) => (
+                    <tr key={u.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs flex-shrink-0">
+                            {u.display_name.slice(0, 1).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="font-medium text-slate-900">{u.display_name}</p>
+                            <p className="text-xs text-slate-400">@{u.username} · {u.email}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 text-slate-600">{u.department ?? <span className="text-slate-300">—</span>}</td>
+                      <td className="px-5 py-3">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          u.role === 'admin' ? 'bg-yellow-100 text-yellow-700' : 'bg-slate-100 text-slate-600'
+                        }`}>{u.role}</span>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          u.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'
+                        }`}>{u.status}</span>
+                      </td>
+                      <td className="px-5 py-3 text-slate-400 text-xs">{new Date(u.created_at).toLocaleDateString()}</td>
+                      <td className="px-5 py-3">
+                        <div className="flex gap-1 justify-end">
+                          <button onClick={() => navigator.clipboard.writeText(u.id)}
+                            title="Copy user ID"
+                            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors text-xs">
+                            ID
+                          </button>
+                          <button onClick={() => handleDisableUser(u.id, u.status)}
+                            className={`p-1.5 rounded-lg text-xs transition-colors ${
+                              u.status === 'active'
+                                ? 'text-amber-500 hover:bg-amber-50'
+                                : 'text-emerald-600 hover:bg-emerald-50'
+                            }`}>
+                            {u.status === 'active' ? 'Disable' : 'Enable'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredUsers.length === 0 && (
+                    <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-400 text-sm">No users found</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ── DEPARTMENTS ── */}
+        {tab === 'departments' && (
+          <div className="space-y-4 max-w-2xl">
+            {deptMsg && (
+              <p className={`text-sm font-medium text-center py-2 rounded-xl ${deptMsg.includes('!') || deptMsg === 'Updated!' || deptMsg === 'Deleted.' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+                {deptMsg}
+              </p>
+            )}
+
+            {/* Add department */}
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+              <h3 className="font-semibold text-slate-700 mb-4">Add department</h3>
+              <form onSubmit={handleCreateDept} className="flex gap-3">
+                <input value={newDeptName} onChange={(e) => setNewDeptName(e.target.value)}
+                  placeholder="Department name" required
+                  className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                <input value={newDeptDesc} onChange={(e) => setNewDeptDesc(e.target.value)}
+                  placeholder="Description (optional)"
+                  className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium">Add</button>
+              </form>
+            </div>
+
+            {/* Department list */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+              <div className="px-5 py-3 bg-slate-50 border-b border-slate-100">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{departments.length} departments</p>
+              </div>
+              <ul className="divide-y divide-slate-50">
+                {departments.map((d) => (
+                  <li key={d.id} className="px-5 py-3 flex items-center gap-3">
+                    {editingDept?.id === d.id ? (
+                      <form onSubmit={handleUpdateDept} className="flex gap-2 flex-1">
+                        <input value={editingDept.name} onChange={(e) => setEditingDept({ ...editingDept, name: e.target.value })}
+                          className="flex-1 border border-indigo-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                        <input value={editingDept.description ?? ''} onChange={(e) => setEditingDept({ ...editingDept, description: e.target.value })}
+                          placeholder="Description"
+                          className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none" />
+                        <button type="submit" className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-medium">Save</button>
+                        <button type="button" onClick={() => setEditingDept(null)} className="px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-xs">Cancel</button>
+                      </form>
+                    ) : (
+                      <>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-slate-800 text-sm">{d.name}</p>
+                          {d.description && <p className="text-xs text-slate-400">{d.description}</p>}
+                        </div>
+                        <button onClick={() => setEditingDept(d)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors text-xs">Edit</button>
+                        <button onClick={() => handleDeleteDept(d.id, d.name)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors text-xs">Delete</button>
+                      </>
+                    )}
+                  </li>
+                ))}
+                {departments.length === 0 && <li className="px-5 py-8 text-center text-slate-400 text-sm">No departments yet</li>}
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {/* ── AUDIT LOGS ── */}
+        {tab === 'logs' && (
+          <div className="space-y-4">
+            <div className="flex gap-3 items-center">
+              <select value={logAction} onChange={(e) => setLogAction(e.target.value)}
+                className="border border-slate-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400">
+                <option value="">All actions</option>
+                {['auth.login','auth.login_failed','auth.totp_enabled','auth.totp_disabled','auth.password_changed','users.created','messages.deleted'].map((a) => (
+                  <option key={a} value={a}>{a}</option>
+                ))}
+              </select>
+              <button onClick={loadLogs} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium">Filter</button>
+              <span className="text-xs text-slate-400">{logTotal} total entries</span>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50 text-left">
+                    <th className="px-5 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wider">Time</th>
+                    <th className="px-5 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wider">Action</th>
+                    <th className="px-5 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wider">User</th>
+                    <th className="px-5 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wider">IP</th>
+                    <th className="px-5 py-3 font-semibold text-slate-500 text-xs uppercase tracking-wider">Details</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50 font-mono text-xs">
+                  {logs.map((l) => (
+                    <tr key={l.id} className="hover:bg-slate-50">
+                      <td className="px-5 py-2.5 text-slate-400 whitespace-nowrap">{new Date(l.createdAt).toLocaleString()}</td>
+                      <td className="px-5 py-2.5">
+                        <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${
+                          l.action.includes('failed') ? 'bg-red-100 text-red-700' :
+                          l.action.includes('deleted') ? 'bg-amber-100 text-amber-700' :
+                          'bg-slate-100 text-slate-600'
+                        }`}>{l.action}</span>
+                      </td>
+                      <td className="px-5 py-2.5 text-slate-600">{l.userEmail ?? '—'}</td>
+                      <td className="px-5 py-2.5 text-slate-400">{l.ipAddress ?? '—'}</td>
+                      <td className="px-5 py-2.5 text-slate-400 max-w-xs truncate">
+                        {l.metadata ? JSON.stringify(l.metadata) : ''}
+                      </td>
+                    </tr>
+                  ))}
+                  {logs.length === 0 && (
+                    <tr><td colSpan={5} className="px-5 py-10 text-center text-slate-400 font-sans">No logs found</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}

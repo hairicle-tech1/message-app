@@ -11,11 +11,11 @@ function avatarBg(seed: string): string {
 }
 import * as conversationsApi from '../api/conversations';
 import * as teamsApi from '../api/teams';
-import { apiFetch } from '../api/client';
 import type { Conversation, Message, Team, TeamMember } from '../api/types';
 import { ConversationList } from '../components/ConversationList';
 import { MessageThread } from '../components/MessageThread';
 import { NewConversationDialog } from '../components/NewConversationDialog';
+import { AdminDashboard } from '../components/AdminDashboard';
 import { ProfilePanel } from '../components/ProfilePanel';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
@@ -40,9 +40,6 @@ export function ChatPage() {
   const [showNewTeam, setShowNewTeam] = useState(false);
   const [addMemberInput, setAddMemberInput] = useState('');
 
-  // Dashboard state
-  const [stats, setStats] = useState<Record<string, number> | null>(null);
-
   useEffect(() => {
     conversationsApi.listConversations().then(({ conversations }) => {
       setConversations(conversations);
@@ -50,14 +47,6 @@ export function ChatPage() {
     });
     teamsApi.listMyTeams().then(({ teams }) => setTeams(teams)).catch(() => {});
   }, []);
-
-  useEffect(() => {
-    if (section === 'dashboard') {
-      apiFetch<{ stats: Record<string, number> }>('/api/admin/stats')
-        .then(({ stats }) => setStats(stats))
-        .catch(() => {});
-    }
-  }, [section]);
 
   useEffect(() => {
     if (!socket) return;
@@ -204,8 +193,8 @@ export function ChatPage() {
         </button>
       </nav>
 
-      {/* ── Secondary panel ───────────────────────────────────────────── */}
-      <aside className="w-72 bg-slate-800 flex flex-col flex-shrink-0 border-r border-slate-700">
+      {/* ── Secondary panel — hidden when dashboard is active ────────── */}
+      <aside className={`w-72 bg-slate-800 flex flex-col flex-shrink-0 border-r border-slate-700 ${section === 'dashboard' ? 'hidden' : ''}`}>
 
         {/* ── CHAT panel ── */}
         {section === 'chat' && (
@@ -349,29 +338,6 @@ export function ChatPage() {
           </>
         )}
 
-        {/* ── DASHBOARD panel ── */}
-        {section === 'dashboard' && (
-          <>
-            <div className="px-4 py-4 border-b border-slate-700 flex-shrink-0">
-              <h2 className="text-base font-bold text-white">Dashboard</h2>
-              <p className="text-xs text-slate-400 mt-0.5">Platform overview</p>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4">
-              {stats ? (
-                <div className="grid grid-cols-2 gap-3">
-                  {Object.entries(stats).map(([key, val]) => (
-                    <div key={key} className="bg-slate-700 rounded-xl p-4 text-center">
-                      <p className="text-2xl font-bold text-white">{val}</p>
-                      <p className="text-xs text-slate-400 mt-1 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-slate-500 text-sm text-center mt-8">Loading stats…</p>
-              )}
-            </div>
-          </>
-        )}
       </aside>
 
       {/* ── Main content area ─────────────────────────────────────────── */}
@@ -437,9 +403,7 @@ export function ChatPage() {
             <p className="text-sm">Select a team to view its members</p>
           </div>
         ) : section === 'dashboard' ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-2 text-slate-400">
-            <p className="text-sm">Select a stat from the dashboard panel</p>
-          </div>
+          <AdminDashboard />
         ) : selectedId ? (
           <MessageThread
             key={selectedId}
