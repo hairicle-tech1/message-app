@@ -25,6 +25,9 @@ export async function getStatsHandler(_req: Request, res: Response) {
 export async function adminUpdateUserHandler(req: Request, res: Response) {
   const body = z
     .object({
+      displayName: z.string().min(1).optional(),
+      username: z.string().min(3).optional(),
+      email: z.string().email().optional(),
       department: z.string().nullable().optional(),
       role: z.string().optional(),
       status: z.enum(['active', 'disabled']).optional(),

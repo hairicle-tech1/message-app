@@ -124,14 +124,33 @@ export async function getStats(): Promise<{
   };
 }
 
-// Update any user's department, role, or status (admin action)
+// Update any user's fields (admin action)
 export async function adminUpdateUser(
   targetUserId: string,
-  fields: { department?: string | null; role?: string; status?: 'active' | 'disabled' },
+  fields: {
+    displayName?: string;
+    username?: string;
+    email?: string;
+    department?: string | null;
+    role?: string;
+    status?: 'active' | 'disabled';
+  },
 ): Promise<void> {
   const setClauses: string[] = ['updated_at = now()'];
   const params: unknown[] = [];
 
+  if (fields.displayName !== undefined) {
+    params.push(fields.displayName);
+    setClauses.push(`display_name = $${params.length}`);
+  }
+  if (fields.username !== undefined) {
+    params.push(fields.username);
+    setClauses.push(`username = $${params.length}`);
+  }
+  if (fields.email !== undefined) {
+    params.push(fields.email);
+    setClauses.push(`email = $${params.length}`);
+  }
   if (fields.department !== undefined) {
     params.push(fields.department ?? null);
     setClauses.push(`department = $${params.length}`);

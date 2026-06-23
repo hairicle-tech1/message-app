@@ -23,6 +23,11 @@ export function AdminDashboard() {
   const [createMsg, setCreateMsg] = useState('');
   const [departments, setDepartments] = useState<Department[]>([]);
 
+  // User editing
+  const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
+  const [editUserFields, setEditUserFields] = useState({ displayName: '', username: '', email: '', role: '', department: '' });
+  const [editUserMsg, setEditUserMsg] = useState('');
+
   // Departments
   const [newDeptName, setNewDeptName] = useState('');
   const [newDeptDesc, setNewDeptDesc] = useState('');
@@ -80,6 +85,35 @@ export function AdminDashboard() {
       loadUsers();
       apiFetch<{ stats: Stats }>('/api/admin/stats').then(({ stats }) => setStats(stats)).catch(() => {});
     } catch (err) { setCreateMsg((err as Error).message); }
+  }
+
+  function startEditUser(u: AdminUser) {
+    setEditingUser(u);
+    setEditUserFields({ displayName: u.display_name, username: u.username, email: u.email, role: u.role, department: u.department ?? '' });
+    setEditUserMsg('');
+  }
+
+  async function handleSaveUser(e: { preventDefault(): void }) {
+    e.preventDefault();
+    if (!editingUser) return;
+    setEditUserMsg('');
+    try {
+      await apiFetch(`/api/admin/users/${editingUser.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          displayName: editUserFields.displayName || undefined,
+          username: editUserFields.username || undefined,
+          email: editUserFields.email || undefined,
+          role: editUserFields.role || undefined,
+          department: editUserFields.department || null,
+        }),
+      });
+      setEditUserMsg('Saved!');
+      await loadUsers();
+      setTimeout(() => { setEditingUser(null); setEditUserMsg(''); }, 800);
+    } catch (err) {
+      setEditUserMsg((err as Error).message);
+    }
   }
 
   async function handleToggleStatus(userId: string, currentStatus: string) {
@@ -302,52 +336,118 @@ export function AdminDashboard() {
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {filteredUsers.map((u) => (
-                    <tr key={u.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-5 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs flex-shrink-0">
-                            {u.display_name.slice(0, 1).toUpperCase()}
+                    <>
+                      <tr key={u.id} className={`hover:bg-slate-50 transition-colors ${editingUser?.id === u.id ? 'bg-indigo-50/50' : ''}`}>
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs flex-shrink-0">
+                              {u.display_name.slice(0, 1).toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="font-medium text-slate-900">{u.display_name}</p>
+                              <p className="text-xs text-slate-400">@{u.username} · {u.email}</p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="font-medium text-slate-900">{u.display_name}</p>
-                            <p className="text-xs text-slate-400">@{u.username} · {u.email}</p>
+                        </td>
+                        <td className="px-5 py-3 text-slate-600 text-sm">{u.department ?? <span className="text-slate-300">—</span>}</td>
+                        <td className="px-5 py-3">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            u.role === 'admin' ? 'bg-yellow-100 text-yellow-700' : 'bg-slate-100 text-slate-600'
+                          }`}>{u.role}</span>
+                        </td>
+                        <td className="px-5 py-3">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            u.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'
+                          }`}>{u.status}</span>
+                        </td>
+                        <td className="px-5 py-3 text-slate-400 text-xs">{new Date(u.created_at).toLocaleDateString()}</td>
+                        <td className="px-5 py-3">
+                          <div className="flex gap-1 justify-end items-center">
+                            <button onClick={() => editingUser?.id === u.id ? setEditingUser(null) : startEditUser(u)}
+                              className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors border ${
+                                editingUser?.id === u.id
+                                  ? 'bg-slate-100 text-slate-500 border-slate-200'
+                                  : 'text-indigo-600 hover:bg-indigo-50 border-indigo-200'
+                              }`}>
+                              {editingUser?.id === u.id ? 'Cancel' : '✏️ Edit'}
+                            </button>
+                            <button onClick={() => handleToggleStatus(u.id, u.status)}
+                              className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors border ${
+                                u.status === 'active'
+                                  ? 'text-amber-600 hover:bg-amber-50 border-amber-200'
+                                  : 'text-emerald-600 hover:bg-emerald-50 border-emerald-200'
+                              }`}>
+                              {u.status === 'active' ? '⏸ Disable' : '▶ Enable'}
+                            </button>
+                            <button onClick={() => handleDeleteUser(u.id, u.display_name)}
+                              className="px-2 py-1 rounded-lg text-xs font-medium text-red-500 hover:bg-red-50 border border-red-200 transition-colors">
+                              🗑 Delete
+                            </button>
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-5 py-3 text-slate-600">{u.department ?? <span className="text-slate-300">—</span>}</td>
-                      <td className="px-5 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                          u.role === 'admin' ? 'bg-yellow-100 text-yellow-700' : 'bg-slate-100 text-slate-600'
-                        }`}>{u.role}</span>
-                      </td>
-                      <td className="px-5 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                          u.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'
-                        }`}>{u.status}</span>
-                      </td>
-                      <td className="px-5 py-3 text-slate-400 text-xs">{new Date(u.created_at).toLocaleDateString()}</td>
-                      <td className="px-5 py-3">
-                        <div className="flex gap-1 justify-end items-center">
-                          <button onClick={() => navigator.clipboard.writeText(u.id)}
-                            title="Copy user ID"
-                            className="px-2 py-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors text-xs">
-                            Copy ID
-                          </button>
-                          <button onClick={() => handleToggleStatus(u.id, u.status)}
-                            className={`px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
-                              u.status === 'active'
-                                ? 'text-amber-600 hover:bg-amber-50 border border-amber-200'
-                                : 'text-emerald-600 hover:bg-emerald-50 border border-emerald-200'
-                            }`}>
-                            {u.status === 'active' ? '⏸ Disable' : '▶ Enable'}
-                          </button>
-                          <button onClick={() => handleDeleteUser(u.id, u.display_name)}
-                            className="px-2 py-1 rounded-lg text-xs font-medium text-red-500 hover:bg-red-50 border border-red-200 transition-colors">
-                            🗑 Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                        </td>
+                      </tr>
+
+                      {/* Inline edit form */}
+                      {editingUser?.id === u.id && (
+                        <tr key={`edit-${u.id}`} className="bg-indigo-50/50">
+                          <td colSpan={6} className="px-5 py-4">
+                            <form onSubmit={handleSaveUser}>
+                              <div className="grid grid-cols-3 gap-3 mb-3">
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-500 mb-1">Display Name</label>
+                                  <input value={editUserFields.displayName}
+                                    onChange={(e) => setEditUserFields((p) => ({ ...p, displayName: e.target.value }))}
+                                    className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white" />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-500 mb-1">Username</label>
+                                  <input value={editUserFields.username}
+                                    onChange={(e) => setEditUserFields((p) => ({ ...p, username: e.target.value }))}
+                                    className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white" />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-500 mb-1">Email</label>
+                                  <input type="email" value={editUserFields.email}
+                                    onChange={(e) => setEditUserFields((p) => ({ ...p, email: e.target.value }))}
+                                    className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white" />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-500 mb-1">Role</label>
+                                  <input value={editUserFields.role}
+                                    onChange={(e) => setEditUserFields((p) => ({ ...p, role: e.target.value }))}
+                                    placeholder="staff, admin, manager…"
+                                    className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white" />
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-semibold text-slate-500 mb-1">Department</label>
+                                  <select value={editUserFields.department}
+                                    onChange={(e) => setEditUserFields((p) => ({ ...p, department: e.target.value }))}
+                                    className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+                                    <option value="">— No department —</option>
+                                    {departments.map((d) => <option key={d.id} value={d.name}>{d.name}</option>)}
+                                  </select>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <button type="submit"
+                                  className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">
+                                  Save changes
+                                </button>
+                                <button type="button" onClick={() => setEditingUser(null)}
+                                  className="px-4 py-1.5 border border-slate-200 text-slate-600 rounded-lg text-sm hover:bg-slate-50 transition-colors">
+                                  Cancel
+                                </button>
+                                {editUserMsg && (
+                                  <span className={`text-sm font-medium ${editUserMsg === 'Saved!' ? 'text-emerald-600' : 'text-red-500'}`}>
+                                    {editUserMsg}
+                                  </span>
+                                )}
+                              </div>
+                            </form>
+                          </td>
+                        </tr>
+                      )}
+                    </>
                   ))}
                   {filteredUsers.length === 0 && (
                     <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-400 text-sm">No users found</td></tr>
