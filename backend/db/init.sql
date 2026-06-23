@@ -10,6 +10,21 @@ CREATE TYPE message_type AS ENUM ('text', 'image', 'video', 'audio', 'file', 'sy
 CREATE TYPE delivery_status AS ENUM ('sent', 'delivered', 'read');
 CREATE TYPE call_type AS ENUM ('audio', 'video');
 
+-- Departments — managed by admins, users reference by name (text)
+
+CREATE TABLE departments (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name        TEXT NOT NULL UNIQUE,
+    description TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Default seed departments (adjust to your org)
+INSERT INTO departments (name) VALUES
+    ('IT'), ('HR'), ('Sales'), ('Marketing'),
+    ('Engineering'), ('Operations'), ('Finance'),
+    ('Head Office'), ('Production'), ('Design'), ('Support');
+
 -- Users & devices
 
 CREATE TABLE users (
@@ -19,7 +34,7 @@ CREATE TABLE users (
     display_name    TEXT NOT NULL,
     avatar_url      TEXT,
     department      TEXT,
-    role            TEXT NOT NULL DEFAULT 'employee',
+    role            TEXT NOT NULL DEFAULT 'staff',
     ldap_dn         TEXT UNIQUE,
     password_hash   TEXT,
     status          user_status NOT NULL DEFAULT 'active',

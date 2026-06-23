@@ -7,6 +7,7 @@ import { errorHandler, notFoundHandler } from './middleware/error.middleware.js'
 import adminRoutes from './modules/admin/admin.routes.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import callsRoutes from './modules/calls/calls.routes.js';
+import departmentsRoutes from './modules/departments/departments.routes.js';
 import teamsRoutes from './modules/teams/teams.routes.js';
 import conversationsRoutes from './modules/conversations/conversations.routes.js';
 import filesRoutes from './modules/files/files.routes.js';
@@ -33,6 +34,7 @@ app.use('/api/messages', messagesRoutes);
 app.use('/api/files', filesRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/calls', callsRoutes);
+app.use('/api/departments', departmentsRoutes);
 app.use('/api/teams', teamsRoutes);
 
 app.use(notFoundHandler);

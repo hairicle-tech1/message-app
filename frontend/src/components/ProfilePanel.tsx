@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import * as departmentsApi from '../api/departments';
 import * as profileApi from '../api/profile';
 import type { UserProfile } from '../api/types';
 import { useAuth } from '../context/AuthContext';
@@ -29,6 +30,7 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
   // Profile tab state — initialise from user immediately so fields are never blank
   const [displayName, setDisplayName] = useState(user?.displayName ?? '');
   const [department, setDepartment] = useState('');
+  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [loadError, setLoadError] = useState('');
@@ -61,6 +63,10 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
 
     profileApi.getNotificationPrefs()
       .then(({ prefs }) => setPrefs(prefs))
+      .catch(() => {});
+
+    departmentsApi.listDepartments()
+      .then(({ departments }) => setDepartments(departments))
       .catch(() => {});
   }, []);
 
@@ -273,9 +279,13 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
                 </label>
                 {user?.role === 'admin' ? (
                   <>
-                    <input value={department} onChange={(e) => setDepartment(e.target.value)}
-                      placeholder="e.g. Sales, HR, Production"
-                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                    <select value={department} onChange={(e) => setDepartment(e.target.value)}
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+                      <option value="">— No department —</option>
+                      {departments.map((d) => (
+                        <option key={d.id} value={d.name}>{d.name}</option>
+                      ))}
+                    </select>
                     <p className="text-xs text-slate-400 mt-1">Changing department moves you to that team automatically.</p>
                   </>
                 ) : (

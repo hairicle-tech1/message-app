@@ -17,7 +17,7 @@ interface CreateUserInput {
   displayName: string;
   password: string;
   department?: string;
-  role?: 'employee' | 'admin';
+  role?: string;
 }
 
 // ── Department → Team auto-assignment ────────────────────────────────────────
@@ -51,7 +51,6 @@ export async function assignToDepartmentTeam(userId: string, department: string 
 }
 
 async function removeFromDepartmentTeam(userId: string, department: string): Promise<void> {
-  // Only remove if this team was auto-created for the department (name matches)
   await db.query(
     `DELETE FROM team_members
      WHERE user_id = $1
@@ -60,19 +59,34 @@ async function removeFromDepartmentTeam(userId: string, department: string): Pro
   );
 }
 
+// Assign user to ALL applicable teams: department, role-based, and catch-all
+export async function syncUserTeams(userId: string, role: string, department: string | null): Promise<void> {
+  // 1. Department team (e.g. "Engineering", "Sales")
+  if (department) {
+    await assignToDepartmentTeam(userId, department);
+  }
+
+  // 2. Role-based team — admins get an "Admins" team
+  if (role === 'admin') {
+    await assignToDepartmentTeam(userId, 'Admins');
+  }
+
+  // 3. Catch-all "All Employees" — every active user
+  await assignToDepartmentTeam(userId, 'All Employees');
+}
+
 export async function createUser(input: CreateUserInput) {
   const passwordHash = await bcrypt.hash(input.password, 12);
 
-  const result = await db.query<{ id: string }>(
+  const result = await db.query<{ id: string; role: string; department: string | null }>(
     `INSERT INTO users (email, username, display_name, password_hash, department, role)
-     VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'employee'))
+     VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'staff'))
      RETURNING id, email, username, display_name, role, department, status, created_at`,
     [input.email, input.username, input.displayName, passwordHash, input.department ?? null, input.role ?? null],
   );
 
   const user = result.rows[0];
-  // Auto-add to department team
-  await assignToDepartmentTeam(user.id, input.department);
+  await syncUserTeams(user.id, user.role ?? 'employee', user.department);
 
   return user;
 }
@@ -147,10 +161,10 @@ export async function updateProfile(userId: string, fields: { displayName?: stri
   const row = result.rows[0];
   if (!row) throw new HttpError(404, 'User not found');
 
-  // Sync department team membership when department changes
+  // Re-sync teams when department changes
   if (fields.department !== undefined && oldDepartment !== (fields.department || null)) {
     if (oldDepartment) await removeFromDepartmentTeam(userId, oldDepartment);
-    if (fields.department) await assignToDepartmentTeam(userId, fields.department);
+    await syncUserTeams(userId, row.role, fields.department || null);
   }
 
   return {

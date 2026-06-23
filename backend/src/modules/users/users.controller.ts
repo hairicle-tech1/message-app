@@ -16,7 +16,7 @@ const createUserSchema = z.object({
   displayName: z.string().min(1),
   password: z.string().min(8),
   department: z.string().optional(),
-  role: z.enum(['employee', 'admin']).optional(),
+  role: z.string().min(1).optional(),   // flexible — admin, staff, manager, etc.
 });
 
 export async function createUserHandler(req: Request, res: Response) {

@@ -1,7 +1,7 @@
 import { Client } from 'ldapts';
 import { db } from '../../config/db.js';
 import { env } from '../../config/env.js';
-import { assignToDepartmentTeam } from '../users/users.service.js';
+import { syncUserTeams } from '../users/users.service.js';
 
 export interface LdapUser {
   dn: string;
@@ -111,10 +111,8 @@ export async function upsertLdapUser(ldapUser: LdapUser): Promise<{ id: string; 
   );
   const user = result.rows[0];
 
-  // Auto-assign to department team on every LDAP sync
-  if (user.department) {
-    await assignToDepartmentTeam(user.id, user.department);
-  }
+  // Sync all teams (department + role + All Employees) on every LDAP login
+  await syncUserTeams(user.id, user.role, user.department);
 
   return { id: user.id, role: user.role };
 }
