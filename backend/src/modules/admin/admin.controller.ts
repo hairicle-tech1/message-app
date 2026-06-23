@@ -34,7 +34,15 @@ export async function adminUpdateUserHandler(req: Request, res: Response) {
       status: z.enum(['active', 'disabled']).optional(),
     })
     .parse(req.body);
+
   await adminService.adminUpdateUser(req.params.userId, body);
+
+  // If disabling, kick the user off Socket.IO immediately
+  if (body.status === 'disabled') {
+    const disconnectUser = req.app.locals.disconnectUser as ((id: string) => Promise<void>) | undefined;
+    if (disconnectUser) await disconnectUser(req.params.userId);
+  }
+
   res.status(204).send();
 }
 

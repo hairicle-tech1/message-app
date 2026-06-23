@@ -10,7 +10,10 @@ async function main() {
   await redis.ping();
 
   const httpServer = http.createServer(app);
-  setupRealtime(httpServer);
+  const realtime = setupRealtime(httpServer);
+
+  // Make disconnectUser available to admin routes via app locals
+  app.locals.disconnectUser = realtime.disconnectUser;
 
   httpServer.listen(env.port, () => {
     console.log(`Server listening on port ${env.port}`);

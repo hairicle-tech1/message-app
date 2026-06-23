@@ -6,7 +6,7 @@ import { useAuth } from './AuthContext';
 const SocketContext = createContext<Socket | null>(null);
 
 export function SocketProvider({ children }: { children: ReactNode }) {
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
   const [socket, setSocket] = useState<Socket | null>(null);
 
   useEffect(() => {
@@ -18,11 +18,18 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     const instance = io(API_URL, { auth: { token } });
     setSocket(instance);
 
+    // Server sends this when an admin disables the account
+    instance.on('account:disabled', () => {
+      instance.disconnect();
+      logout();
+      window.alert('Your account has been disabled by an administrator.');
+    });
+
     return () => {
       instance.emit('user:offline');
       instance.disconnect();
     };
-  }, [token]);
+  }, [token, logout]);
 
   return <SocketContext.Provider value={socket}>{children}</SocketContext.Provider>;
 }

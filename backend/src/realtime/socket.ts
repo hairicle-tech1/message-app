@@ -43,7 +43,18 @@ export function setupRealtime(httpServer: HttpServer) {
     void handleConnection(io, socket as AuthedSocket);
   });
 
-  return io;
+  // Expose a way to force-disconnect all sockets for a given user ID
+  const ioRef = io;
+  return {
+    io: ioRef,
+    disconnectUser: async (userId: string) => {
+      const sockets = await ioRef.in(`user:${userId}`).fetchSockets();
+      for (const s of sockets) {
+        s.emit('account:disabled');
+        s.disconnect(true);
+      }
+    },
+  };
 }
 
 async function handleConnection(io: Server, socket: AuthedSocket) {

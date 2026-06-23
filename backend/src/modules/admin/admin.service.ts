@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { db } from '../../config/db.js';
+import { blockUser, unblockUser } from '../../middleware/auth.middleware.js';
 import { createUser, syncUserTeams } from '../users/users.service.js';
 
 export interface AuditLogEntry {
@@ -180,6 +181,13 @@ export async function adminUpdateUser(
     );
     const u = userRes.rows[0];
     if (u) await syncUserTeams(targetUserId, u.role, u.department);
+  }
+
+  // Manage Redis block list when status changes
+  if (fields.status === 'disabled') {
+    await blockUser(targetUserId);     // invalidates any live JWT immediately
+  } else if (fields.status === 'active') {
+    await unblockUser(targetUserId);   // allow the user back in
   }
 }
 
