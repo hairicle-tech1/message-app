@@ -21,7 +21,7 @@ CREATE TABLE departments (
 
 -- Default seed departments (adjust to your org)
 INSERT INTO departments (name) VALUES
-    ('IT'), ('HR'), ('Sales'), ('Marketing'),
+    ('IT'), ('HR'), ('Sale Team'), ('Marketing Team'),
     ('Engineering'), ('Operations'), ('Finance'),
     ('Head Office'), ('Production'), ('Design'), ('Support');
 
