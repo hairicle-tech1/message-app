@@ -180,12 +180,19 @@ async function getOrCreateDevice(userId: string, deviceName: string): Promise<st
 
 export async function getUserById(id: string) {
   const result = await db.query<{
-    id: string; email: string; username: string; display_name: string; role: string;
+    id: string; email: string; username: string; display_name: string; role: string; avatar_url: string | null;
   }>(
-    'SELECT id, email, username, display_name, role FROM users WHERE id = $1',
+    'SELECT id, email, username, display_name, role, avatar_url FROM users WHERE id = $1',
     [id],
   );
   const row = result.rows[0];
   if (!row) return null;
-  return { id: row.id, email: row.email, username: row.username, displayName: row.display_name, role: row.role };
+  return {
+    id: row.id,
+    email: row.email,
+    username: row.username,
+    displayName: row.display_name,
+    role: row.role,
+    avatarUrl: row.avatar_url,
+  };
 }

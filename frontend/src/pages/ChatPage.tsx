@@ -148,8 +148,15 @@ export function ChatPage() {
       <nav className="w-16 bg-slate-900 flex flex-col items-center py-3 gap-1 flex-shrink-0 border-r border-slate-800">
         {/* User avatar — click to open profile */}
         <button onClick={() => setShowProfile(true)} title="My profile"
-          className="w-9 h-9 rounded-full bg-indigo-500 flex items-center justify-center text-white text-sm font-bold mb-3 flex-shrink-0 hover:ring-2 hover:ring-indigo-300 transition-all">
-          {user.displayName.slice(0, 1).toUpperCase()}
+          className="relative w-9 h-9 rounded-full mb-3 flex-shrink-0 hover:ring-2 hover:ring-indigo-300 transition-all overflow-hidden bg-indigo-500">
+          {user.avatarUrl ? (
+            <img src={user.avatarUrl} alt={user.displayName}
+              className="w-full h-full object-cover"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+          ) : null}
+          <span className={`absolute inset-0 flex items-center justify-center text-white text-sm font-bold ${user.avatarUrl ? 'hidden' : ''}`}>
+            {user.displayName.slice(0, 1).toUpperCase()}
+          </span>
         </button>
 
         <NavItem id="chat" label="Chat" icon={

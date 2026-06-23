@@ -74,8 +74,11 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
     if (!file) return;
     try {
       const { profile: updated } = await profileApi.uploadAvatar(file);
+      const v = Date.now();
       setProfile(updated);
-      setAvatarKey(Date.now());
+      setAvatarKey(v);
+      // Propagate to AuthContext so the icon rail refreshes immediately
+      updateUser({ avatarUrl: `${profileApi.getAvatarUrl(updated.id)}?v=${v}` });
       setSaveMsg('Avatar updated!');
       setTimeout(() => setSaveMsg(''), 3000);
     } catch (err) {

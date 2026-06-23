@@ -4,6 +4,7 @@ export interface User {
   username: string;
   displayName: string;
   role: string;
+  avatarUrl?: string | null;
 }
 
 export interface UserProfile {
