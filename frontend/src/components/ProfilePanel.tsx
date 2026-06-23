@@ -3,6 +3,18 @@ import * as profileApi from '../api/profile';
 import type { UserProfile } from '../api/types';
 import { useAuth } from '../context/AuthContext';
 
+const AVATAR_COLORS = [
+  'bg-indigo-500', 'bg-purple-500', 'bg-pink-500', 'bg-red-500',
+  'bg-orange-500', 'bg-emerald-500', 'bg-teal-500', 'bg-cyan-500',
+  'bg-blue-500', 'bg-violet-500',
+];
+
+function avatarColor(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = seed.charCodeAt(i) + ((h << 5) - h);
+  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
+}
+
 type Tab = 'profile' | 'security' | 'notifications';
 
 interface ProfilePanelProps {
@@ -186,14 +198,19 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
 
           {/* Avatar */}
           <div className="relative w-fit mx-auto mb-3">
-            {avatarUrl ? (
+            {/* Uploaded avatar */}
+            {avatarUrl && (
               <img key={avatarKey} src={`${avatarUrl}?v=${avatarKey}`}
-                className="w-20 h-20 rounded-full object-cover ring-4 ring-indigo-500"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-            ) : null}
-            <div className={`w-20 h-20 rounded-full bg-indigo-500 flex items-center justify-center text-white text-3xl font-bold ring-4 ring-indigo-500 ${avatarUrl ? 'hidden' : 'block'}`}>
-              {user?.displayName.slice(0, 1).toUpperCase()}
-            </div>
+                className="w-20 h-20 rounded-full object-cover ring-4 ring-white/30"
+                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+            )}
+            {/* Generated color avatar — shown when no photo uploaded */}
+            {!avatarUrl && (
+              <div className={`w-20 h-20 rounded-full flex items-center justify-center text-white text-3xl font-bold ring-4 ring-white/30 ${avatarColor(user?.username ?? 'u')}`}>
+                {(profile?.displayName ?? user?.displayName ?? '?').slice(0, 1).toUpperCase()}
+              </div>
+            )}
+            {/* Upload button */}
             <button onClick={() => avatarInputRef.current?.click()}
               className="absolute -bottom-1 -right-1 w-7 h-7 bg-white rounded-full shadow-md flex items-center justify-center text-indigo-600 hover:bg-indigo-50 transition-colors border border-indigo-100">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -243,11 +260,24 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
                   className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Department</label>
-                <input value={department} onChange={(e) => setDepartment(e.target.value)}
-                  placeholder="e.g. Sales, HR, Production"
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-                <p className="text-xs text-slate-400 mt-1">Changing department will move you to the new team automatically.</p>
+                <label className="block text-xs font-semibold text-slate-500 mb-1">
+                  Department
+                  {user?.role !== 'admin' && (
+                    <span className="ml-2 text-[10px] bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded-full font-normal">admin only</span>
+                  )}
+                </label>
+                {user?.role === 'admin' ? (
+                  <>
+                    <input value={department} onChange={(e) => setDepartment(e.target.value)}
+                      placeholder="e.g. Sales, HR, Production"
+                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                    <p className="text-xs text-slate-400 mt-1">Changing department moves you to that team automatically.</p>
+                  </>
+                ) : (
+                  <p className="text-sm text-slate-600 px-3 py-2 bg-slate-50 rounded-xl">
+                    {profile?.department ?? <span className="italic text-slate-400">No department set</span>}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-500 mb-1">Email</label>

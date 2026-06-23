@@ -50,7 +50,11 @@ export async function getMyProfileHandler(req: Request, res: Response) {
 
 export async function updateProfileHandler(req: Request, res: Response) {
   const body = updateProfileSchema.parse(req.body);
-  const profile = await usersService.updateProfile(req.user!.id, body);
+  // Non-admin users cannot change their own department — strip the field
+  const fields = req.user!.role === 'admin'
+    ? body
+    : { displayName: body.displayName };
+  const profile = await usersService.updateProfile(req.user!.id, fields);
   res.json({ profile });
 }
 
