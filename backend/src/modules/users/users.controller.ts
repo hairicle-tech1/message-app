@@ -43,21 +43,22 @@ export async function listDirectoryHandler(req: Request, res: Response) {
 }
 
 export async function getMyProfileHandler(req: Request, res: Response) {
-  const user = await usersService.getProfile(req.user!.id);
-  res.json({ user });
+  const profile = await usersService.getProfile(req.user!.id);
+  if (!profile) throw new HttpError(404, 'User not found');
+  res.json({ profile });
 }
 
 export async function updateProfileHandler(req: Request, res: Response) {
   const body = updateProfileSchema.parse(req.body);
-  const user = await usersService.updateProfile(req.user!.id, body);
-  res.json({ user });
+  const profile = await usersService.updateProfile(req.user!.id, body);
+  res.json({ profile });
 }
 
 export async function updateAvatarHandler(req: Request, res: Response) {
   if (!req.file) throw new HttpError(400, 'No image uploaded');
   if (!req.file.mimetype.startsWith('image/')) throw new HttpError(400, 'File must be an image');
-  const user = await usersService.updateAvatar(req.user!.id, req.file.buffer);
-  res.json({ user });
+  const profile = await usersService.updateAvatar(req.user!.id, req.file.buffer);
+  res.json({ profile });
 }
 
 export async function getUserAvatarHandler(req: Request, res: Response) {
