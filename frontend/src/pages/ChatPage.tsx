@@ -79,7 +79,7 @@ export function ChatPage() {
     };
   }, [socket]);
 
-  async function handleCreateTeam(e: React.FormEvent) {
+  async function handleCreateTeam(e: { preventDefault(): void }) {
     e.preventDefault();
     if (!newTeamName.trim()) return;
     const { team } = await teamsApi.createTeam({ name: newTeamName.trim() });
@@ -95,7 +95,7 @@ export function ChatPage() {
     setTeamMembers(members);
   }
 
-  async function handleAddMember(e: React.FormEvent) {
+  async function handleAddMember(e: { preventDefault(): void }) {
     e.preventDefault();
     if (!selectedTeam || !addMemberInput.trim()) return;
     await teamsApi.addTeamMember(selectedTeam.id, addMemberInput.trim());
@@ -260,16 +260,67 @@ export function ChatPage() {
         {/* ── ANNOUNCEMENTS panel ── */}
         {section === 'announcements' && (
           <>
-            <div className="px-4 py-4 border-b border-slate-700 flex items-center justify-between flex-shrink-0">
+            <div className="px-4 py-4 border-b border-slate-700 flex-shrink-0">
               <h2 className="text-base font-bold text-white">Announcements</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Grouped by division</p>
             </div>
-            <ConversationList
-              conversations={announcements}
-              selectedId={selectedId}
-              currentUserId={user.id}
-              presence={presence}
-              onSelect={(id) => setSelectedId(id)}
-            />
+
+            <div className="flex-1 overflow-y-auto py-2">
+              {/* General — channels with no team (visible to everyone) */}
+              {(() => {
+                const general = announcements.filter((c) => !c.team_id);
+                return general.length > 0 ? (
+                  <div className="mb-2">
+                    <p className="px-4 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-widest">🌐 General</p>
+                    {general.map((c) => (
+                      <button key={c.id} onClick={() => setSelectedId(c.id)}
+                        className={`w-full flex items-center gap-3 px-4 py-2 text-left transition-colors ${
+                          selectedId === c.id ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                        }`}>
+                        <span className="text-base">📢</span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{c.name ?? 'Announcement'}</p>
+                          {c.unread_count ? <span className={`text-xs ${selectedId === c.id ? 'text-indigo-200' : 'text-indigo-400'}`}>{c.unread_count} new</span> : null}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : null;
+              })()}
+
+              {/* Grouped by team */}
+              {teams.map((team) => {
+                const teamChannels = announcements.filter((c) => c.team_id === team.id);
+                if (teamChannels.length === 0) return null;
+                return (
+                  <div key={team.id} className="mb-2">
+                    <p className="px-4 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-widest truncate">
+                      🏢 {team.name}
+                    </p>
+                    {teamChannels.map((c) => (
+                      <button key={c.id} onClick={() => setSelectedId(c.id)}
+                        className={`w-full flex items-center gap-3 px-4 py-2 text-left transition-colors ${
+                          selectedId === c.id ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                        }`}>
+                        <span className="text-base">📢</span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{c.name ?? 'Announcement'}</p>
+                          {c.unread_count ? <span className={`text-xs ${selectedId === c.id ? 'text-indigo-200' : 'text-indigo-400'}`}>{c.unread_count} new</span> : null}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })}
+
+              {announcements.length === 0 && (
+                <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-500 px-6 text-center mt-12">
+                  <span className="text-4xl opacity-40">📢</span>
+                  <p className="text-sm">No announcement channels yet.<br/>Create a channel conversation to get started.</p>
+                </div>
+              )}
+            </div>
+
             <div className="p-3 border-t border-slate-700 flex-shrink-0">
               <NewConversationDialog onCreated={handleConversationCreated} />
             </div>
