@@ -1,36 +1,83 @@
 import { useEffect, useState } from 'react';
 import * as conversationsApi from '../api/conversations';
 import * as teamsApi from '../api/teams';
-import type { Conversation, Message, Team } from '../api/types';
+import { apiFetch } from '../api/client';
+import type { Conversation, Message, Team, TeamMember } from '../api/types';
 import { ConversationList } from '../components/ConversationList';
 import { MessageThread } from '../components/MessageThread';
 import { NewConversationDialog } from '../components/NewConversationDialog';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 
+type Section = 'chat' | 'teams' | 'dashboard' | 'announcements';
+
 export function ChatPage() {
   const { user, logout } = useAuth();
   const socket = useSocket();
+
+  const [section, setSection] = useState<Section>('chat');
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [presence, setPresence] = useState<Record<string, 'online' | 'offline'>>({});
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(true);
+
+  // Teams state
   const [teams, setTeams] = useState<Team[]>([]);
-  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [newTeamName, setNewTeamName] = useState('');
   const [showNewTeam, setShowNewTeam] = useState(false);
+  const [addMemberInput, setAddMemberInput] = useState('');
+
+  // Dashboard state
+  const [stats, setStats] = useState<Record<string, number> | null>(null);
 
   useEffect(() => {
     conversationsApi.listConversations().then(({ conversations }) => {
       setConversations(conversations);
-      setSelectedId((current) => current ?? conversations[0]?.id ?? null);
+      setSelectedId((cur) => cur ?? conversations[0]?.id ?? null);
     });
     teamsApi.listMyTeams().then(({ teams }) => setTeams(teams)).catch(() => {});
   }, []);
 
-  const filteredConversations = selectedTeamId
-    ? conversations.filter((c) => c.team_id === selectedTeamId)
-    : conversations;
+  useEffect(() => {
+    if (section === 'dashboard') {
+      apiFetch<{ stats: Record<string, number> }>('/api/admin/stats')
+        .then(({ stats }) => setStats(stats))
+        .catch(() => {});
+    }
+  }, [section]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const onInit = (p: { onlineUserIds: string[] }) => {
+      const s: Record<string, 'online' | 'offline'> = {};
+      for (const id of p.onlineUserIds) s[id] = 'online';
+      setPresence(s);
+    };
+    const onUpdate = (p: { userId: string; status: 'online' | 'offline' }) =>
+      setPresence((prev) => ({ ...prev, [p.userId]: p.status }));
+    const onMsg = (m: Message) =>
+      setConversations((prev) => {
+        const i = prev.findIndex((c) => c.id === m.conversationId);
+        if (i === -1) return prev;
+        const next = [...prev];
+        const [c] = next.splice(i, 1);
+        next.unshift({ ...c, updated_at: m.createdAt });
+        return next;
+      });
+    const reqPresence = () => socket.emit('presence:get');
+    socket.on('presence:init', onInit);
+    socket.on('presence:update', onUpdate);
+    socket.on('message:new', onMsg);
+    socket.on('connect', reqPresence);
+    if (socket.connected) reqPresence();
+    return () => {
+      socket.off('presence:init', onInit);
+      socket.off('presence:update', onUpdate);
+      socket.off('message:new', onMsg);
+      socket.off('connect', reqPresence);
+    };
+  }, [socket]);
 
   async function handleCreateTeam(e: React.FormEvent) {
     e.preventDefault();
@@ -39,193 +86,301 @@ export function ChatPage() {
     setTeams((prev) => [...prev, team]);
     setNewTeamName('');
     setShowNewTeam(false);
+    openTeam(team);
   }
 
-  useEffect(() => {
-    if (!socket) return;
-
-    const handlePresenceInit = (payload: { onlineUserIds: string[] }) => {
-      const snapshot: Record<string, 'online' | 'offline'> = {};
-      for (const id of payload.onlineUserIds) snapshot[id] = 'online';
-      setPresence(snapshot);
-    };
-
-    const handlePresence = (payload: { userId: string; status: 'online' | 'offline' }) => {
-      setPresence((prev) => ({ ...prev, [payload.userId]: payload.status }));
-    };
-
-    const handleNewMessage = (message: Message) => {
-      setConversations((prev) => {
-        const idx = prev.findIndex((c) => c.id === message.conversationId);
-        if (idx === -1) return prev;
-        const updated = [...prev];
-        const [conv] = updated.splice(idx, 1);
-        updated.unshift({ ...conv, updated_at: message.createdAt });
-        return updated;
-      });
-    };
-
-    const requestPresence = () => socket.emit('presence:get');
-
-    socket.on('presence:init', handlePresenceInit);
-    socket.on('presence:update', handlePresence);
-    socket.on('message:new', handleNewMessage);
-    socket.on('connect', requestPresence);
-
-    if (socket.connected) {
-      requestPresence();
-    }
-
-    return () => {
-      socket.off('presence:init', handlePresenceInit);
-      socket.off('presence:update', handlePresence);
-      socket.off('message:new', handleNewMessage);
-      socket.off('connect', requestPresence);
-    };
-  }, [socket]);
-
-  function handleConversationCreated(conversation: Conversation) {
-    setConversations((prev) => {
-      if (prev.some((c) => c.id === conversation.id)) return prev;
-      return [conversation, ...prev];
-    });
-    setSelectedId(conversation.id);
-    setMobileSidebarOpen(false);
+  async function openTeam(team: Team) {
+    setSelectedTeam(team);
+    const { members } = await teamsApi.listTeamMembers(team.id);
+    setTeamMembers(members);
   }
 
-  function handleSelect(id: string) {
-    setSelectedId(id);
-    setMobileSidebarOpen(false);
+  async function handleAddMember(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedTeam || !addMemberInput.trim()) return;
+    await teamsApi.addTeamMember(selectedTeam.id, addMemberInput.trim());
+    setAddMemberInput('');
+    const { members } = await teamsApi.listTeamMembers(selectedTeam.id);
+    setTeamMembers(members);
   }
+
+  async function handleRemoveMember(userId: string) {
+    if (!selectedTeam) return;
+    await teamsApi.removeTeamMember(selectedTeam.id, userId);
+    setTeamMembers((prev) => prev.filter((m) => m.userId !== userId));
+  }
+
+  function handleConversationCreated(conv: Conversation) {
+    setConversations((prev) => (prev.some((c) => c.id === conv.id) ? prev : [conv, ...prev]));
+    setSelectedId(conv.id);
+    setSection('chat');
+  }
+
+  const announcements = conversations.filter((c) => c.type === 'channel');
+  const chats = conversations.filter((c) => c.type !== 'channel');
 
   if (!user) return null;
 
+  // ── Nav item helper ──────────────────────────────────────────────────
+  function NavItem({ id, label, icon }: { id: Section; label: string; icon: React.ReactNode }) {
+    const active = section === id;
+    return (
+      <button
+        onClick={() => setSection(id)}
+        className={`flex flex-col items-center gap-1 w-full py-3 px-1 transition-colors ${
+          active ? 'text-white bg-white/10 rounded-xl' : 'text-slate-400 hover:text-white'
+        }`}
+        title={label}
+      >
+        {icon}
+        <span className="text-[10px] font-medium leading-none">{label}</span>
+      </button>
+    );
+  }
+
   return (
     <div className="flex h-full overflow-hidden bg-slate-50">
-      {/* Sidebar */}
-      <aside
-        className={`flex-col w-72 shrink-0 bg-slate-900 border-r border-slate-800 ${
-          mobileSidebarOpen ? 'flex' : 'hidden'
-        } md:flex`}
-      >
-        {/* User header */}
-        <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-800 flex-shrink-0">
-          <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
-            {user.displayName.slice(0, 1).toUpperCase()}
-          </div>
-          <span className="flex-1 text-sm font-semibold text-white truncate">{user.displayName}</span>
-          <button
-            onClick={logout}
-            className="text-xs text-slate-400 hover:text-white transition-colors flex-shrink-0"
-          >
-            Sign out
-          </button>
+
+      {/* ── Icon navigation (like MS Teams left rail) ─────────────────── */}
+      <nav className="w-16 bg-slate-900 flex flex-col items-center py-3 gap-1 flex-shrink-0 border-r border-slate-800">
+        {/* User avatar */}
+        <div className="w-9 h-9 rounded-full bg-indigo-500 flex items-center justify-center text-white text-sm font-bold mb-3 flex-shrink-0">
+          {user.displayName.slice(0, 1).toUpperCase()}
         </div>
 
-        {/* Teams section — always visible */}
-        <div className="px-3 pt-3 pb-2 border-b border-slate-800 flex-shrink-0">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Teams</span>
-            <button
-              onClick={() => setShowNewTeam((v) => !v)}
-              className="w-5 h-5 rounded flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 transition-colors text-sm"
-              title="New team"
-            >
-              +
-            </button>
-          </div>
+        <NavItem id="chat" label="Chat" icon={
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+        } />
 
-          {/* New team form */}
-          {showNewTeam && (
-            <form onSubmit={handleCreateTeam} className="flex gap-1 mb-2">
-              <input
-                autoFocus
-                value={newTeamName}
-                onChange={(e) => setNewTeamName(e.target.value)}
-                placeholder="e.g. Sales Team"
-                className="flex-1 bg-slate-700 text-white text-xs rounded-lg px-2 py-1.5 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-400"
-              />
-              <button type="submit" className="px-2 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-medium">
-                Add
-              </button>
-            </form>
-          )}
+        <NavItem id="teams" label="Teams" icon={
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        } />
 
-          {teams.length === 0 ? (
-            <p className="text-xs text-slate-600 italic px-1">No teams yet — click + to create one</p>
-          ) : (
-            <div className="flex flex-wrap gap-1">
-              <button
-                onClick={() => setSelectedTeamId(null)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-                  selectedTeamId === null
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600 hover:text-white'
-                }`}
-              >
-                All
-              </button>
-              {teams.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setSelectedTeamId(t.id === selectedTeamId ? null : t.id)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-                    selectedTeamId === t.id
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-slate-700 text-slate-300 hover:bg-slate-600 hover:text-white'
-                  }`}
-                >
-                  {t.name}
-                </button>
-              ))}
+        <NavItem id="announcements" label="Announce" icon={
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
+          </svg>
+        } />
+
+        {user.role === 'admin' && (
+          <NavItem id="dashboard" label="Dashboard" icon={
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+          } />
+        )}
+
+        <div className="flex-1" />
+        <button onClick={logout} className="text-slate-500 hover:text-red-400 transition-colors p-2 rounded-xl hover:bg-slate-800" title="Sign out">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+        </button>
+      </nav>
+
+      {/* ── Secondary panel ───────────────────────────────────────────── */}
+      <aside className="w-72 bg-slate-800 flex flex-col flex-shrink-0 border-r border-slate-700">
+
+        {/* ── CHAT panel ── */}
+        {section === 'chat' && (
+          <>
+            <div className="px-4 py-4 border-b border-slate-700 flex-shrink-0">
+              <h2 className="text-base font-bold text-white">Chat</h2>
             </div>
-          )}
-        </div>
+            <ConversationList
+              conversations={chats}
+              selectedId={selectedId}
+              currentUserId={user.id}
+              presence={presence}
+              onSelect={(id) => setSelectedId(id)}
+            />
+            <div className="p-3 border-t border-slate-700 flex-shrink-0">
+              <NewConversationDialog onCreated={handleConversationCreated} />
+            </div>
+          </>
+        )}
 
-        {/* Section label */}
-        <div className="px-4 pt-3 pb-1 flex-shrink-0">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            {selectedTeamId ? teams.find((t) => t.id === selectedTeamId)?.name : 'All Messages'}
-          </span>
-        </div>
+        {/* ── TEAMS panel ── */}
+        {section === 'teams' && (
+          <>
+            <div className="px-4 py-4 border-b border-slate-700 flex items-center justify-between flex-shrink-0">
+              <h2 className="text-base font-bold text-white">Teams</h2>
+              <button onClick={() => setShowNewTeam((v) => !v)}
+                className="text-slate-400 hover:text-white text-xl leading-none transition-colors" title="New team">+</button>
+            </div>
 
-        {/* Conversation list */}
-        <ConversationList
-          conversations={filteredConversations}
-          selectedId={selectedId}
-          currentUserId={user.id}
-          presence={presence}
-          onSelect={handleSelect}
-        />
+            {showNewTeam && (
+              <form onSubmit={handleCreateTeam} className="px-3 py-2 border-b border-slate-700 flex gap-2 flex-shrink-0">
+                <input autoFocus value={newTeamName} onChange={(e) => setNewTeamName(e.target.value)}
+                  placeholder="Team name e.g. Sales"
+                  className="flex-1 bg-slate-700 text-white text-sm rounded-lg px-3 py-1.5 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                <button type="submit" className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium">Add</button>
+              </form>
+            )}
 
-        {/* New conversation button */}
-        <div className="p-3 border-t border-slate-800 flex-shrink-0">
-          <NewConversationDialog onCreated={handleConversationCreated} />
-        </div>
+            <div className="flex-1 overflow-y-auto py-2">
+              {teams.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-500 px-6 text-center">
+                  <svg className="w-10 h-10 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <p className="text-sm">No teams yet.<br/>Click + to create your first team.</p>
+                </div>
+              ) : (
+                <ul className="px-2 space-y-0.5">
+                  {teams.map((t) => (
+                    <li key={t.id}>
+                      <button onClick={() => openTeam(t)}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors ${
+                          selectedTeam?.id === t.id ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                        }`}>
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0 ${
+                          selectedTeam?.id === t.id ? 'bg-indigo-400' : 'bg-slate-600'}`}>
+                          {t.name.slice(0, 1).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold truncate">{t.name}</p>
+                          <p className={`text-xs ${selectedTeam?.id === t.id ? 'text-indigo-200' : 'text-slate-500'}`}>
+                            {t.memberCount} member{t.memberCount !== 1 ? 's' : ''} · {t.myRole}
+                          </p>
+                        </div>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* ── ANNOUNCEMENTS panel ── */}
+        {section === 'announcements' && (
+          <>
+            <div className="px-4 py-4 border-b border-slate-700 flex items-center justify-between flex-shrink-0">
+              <h2 className="text-base font-bold text-white">Announcements</h2>
+            </div>
+            <ConversationList
+              conversations={announcements}
+              selectedId={selectedId}
+              currentUserId={user.id}
+              presence={presence}
+              onSelect={(id) => setSelectedId(id)}
+            />
+            <div className="p-3 border-t border-slate-700 flex-shrink-0">
+              <NewConversationDialog onCreated={handleConversationCreated} />
+            </div>
+          </>
+        )}
+
+        {/* ── DASHBOARD panel ── */}
+        {section === 'dashboard' && (
+          <>
+            <div className="px-4 py-4 border-b border-slate-700 flex-shrink-0">
+              <h2 className="text-base font-bold text-white">Dashboard</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Platform overview</p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {stats ? (
+                <div className="grid grid-cols-2 gap-3">
+                  {Object.entries(stats).map(([key, val]) => (
+                    <div key={key} className="bg-slate-700 rounded-xl p-4 text-center">
+                      <p className="text-2xl font-bold text-white">{val}</p>
+                      <p className="text-xs text-slate-400 mt-1 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-slate-500 text-sm text-center mt-8">Loading stats…</p>
+              )}
+            </div>
+          </>
+        )}
       </aside>
 
-      {/* Main content */}
-      <main
-        className={`flex-1 flex flex-col min-w-0 ${
-          !mobileSidebarOpen ? 'flex' : 'hidden'
-        } md:flex`}
-      >
-        {selectedId ? (
+      {/* ── Main content area ─────────────────────────────────────────── */}
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+
+        {/* Teams: show team member panel when a team is selected */}
+        {section === 'teams' && selectedTeam ? (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Team header */}
+            <header className="flex items-center gap-4 px-6 py-4 bg-white border-b border-slate-200 shadow-sm flex-shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-lg">
+                {selectedTeam.name.slice(0, 1).toUpperCase()}
+              </div>
+              <div>
+                <h1 className="font-bold text-slate-900 text-lg leading-tight">{selectedTeam.name}</h1>
+                <p className="text-sm text-slate-400">{selectedTeam.memberCount} members · Your role: <span className="font-medium text-indigo-600">{selectedTeam.myRole}</span></p>
+              </div>
+            </header>
+
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* Add member */}
+              {(selectedTeam.myRole === 'owner' || selectedTeam.myRole === 'admin') && (
+                <form onSubmit={handleAddMember} className="flex gap-2 mb-6">
+                  <input value={addMemberInput} onChange={(e) => setAddMemberInput(e.target.value)}
+                    placeholder="Paste a User ID to add member…"
+                    className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                  <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium transition-colors">Add</button>
+                </form>
+              )}
+
+              {/* Members grid */}
+              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Members</h3>
+              <div className="grid grid-cols-1 gap-2">
+                {teamMembers.map((m) => (
+                  <div key={m.userId} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-200 shadow-sm">
+                    <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-sm flex-shrink-0">
+                      {m.displayName.slice(0, 1).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-slate-900 truncate">{m.displayName}</p>
+                      <p className="text-xs text-slate-400">@{m.username}{m.department ? ` · ${m.department}` : ''}</p>
+                    </div>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                      m.role === 'owner' ? 'bg-yellow-100 text-yellow-700' :
+                      m.role === 'admin' ? 'bg-blue-100 text-blue-700' :
+                      'bg-slate-100 text-slate-500'}`}>
+                      {m.role}
+                    </span>
+                    {(selectedTeam.myRole === 'owner' || selectedTeam.myRole === 'admin') && m.role !== 'owner' && m.userId !== user.id && (
+                      <button onClick={() => handleRemoveMember(m.userId)}
+                        className="text-slate-300 hover:text-red-500 transition-colors text-xs ml-1" title="Remove">✕</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : section === 'teams' ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-400">
+            <svg className="w-16 h-16 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <p className="text-sm">Select a team to view its members</p>
+          </div>
+        ) : section === 'dashboard' ? (
+          <div className="flex-1 flex flex-col items-center justify-center gap-2 text-slate-400">
+            <p className="text-sm">Select a stat from the dashboard panel</p>
+          </div>
+        ) : selectedId ? (
           <MessageThread
             key={selectedId}
             conversationId={selectedId}
             presence={presence}
-            onBack={() => setMobileSidebarOpen(true)}
+            onBack={() => setSelectedId(null)}
           />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-400">
-            <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center">
-              <svg className="w-8 h-8 text-slate-300" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M2 5a2 2 0 012-2h7a2 2 0 012 2v4a2 2 0 01-2 2H9l-3 3v-3H4a2 2 0 01-2-2V5z" />
-                <path d="M15 7v2a4 4 0 01-4 4H9.828l-1.766 1.767c.28.149.599.233.938.233h2l3 3v-3h2a2 2 0 002-2V9a2 2 0 00-2-2h-1z" />
-              </svg>
-            </div>
-            <p className="text-sm">Select or start a conversation</p>
+            <svg className="w-16 h-16 opacity-20" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M2 5a2 2 0 012-2h7a2 2 0 012 2v4a2 2 0 01-2 2H9l-3 3v-3H4a2 2 0 01-2-2V5z" />
+              <path d="M15 7v2a4 4 0 01-4 4H9.828l-1.766 1.767c.28.149.599.233.938.233h2l3 3v-3h2a2 2 0 002-2V9a2 2 0 00-2-2h-1z" />
+            </svg>
+            <p className="text-sm">Select a conversation to start chatting</p>
           </div>
         )}
       </main>
