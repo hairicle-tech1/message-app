@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
-import { apiFetch } from '../api/client';
+import { useEffect, useRef, useState } from 'react';
+import * as XLSX from 'xlsx';
+import { API_URL, apiFetch, getAuthToken } from '../api/client';
 import * as departmentsApi from '../api/departments';
 import type { Department } from '../api/departments';
 
@@ -22,6 +23,11 @@ export function AdminDashboard() {
   const [newUser, setNewUser] = useState({ email: '', username: '', displayName: '', password: '', role: 'staff', department: '' });
   const [createMsg, setCreateMsg] = useState('');
   const [departments, setDepartments] = useState<Department[]>([]);
+
+  // Excel import
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ created: number; failed: { row: number; email: string; error: string }[] } | null>(null);
 
   // User editing
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
@@ -85,6 +91,42 @@ export function AdminDashboard() {
       loadUsers();
       apiFetch<{ stats: Stats }>('/api/admin/stats').then(({ stats }) => setStats(stats)).catch(() => {});
     } catch (err) { setCreateMsg((err as Error).message); }
+  }
+
+  function downloadTemplate() {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['email', 'username', 'displayName', 'password', 'role', 'department'],
+      ['alice@company.local', 'alice', 'Alice Smith', 'Password123!', 'staff', 'Sales'],
+      ['bob@company.local', 'bob', 'Bob Jones', 'Password123!', 'staff', 'IT'],
+    ]);
+    ws['!cols'] = [{ wch: 28 }, { wch: 15 }, { wch: 20 }, { wch: 14 }, { wch: 12 }, { wch: 16 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Users');
+    XLSX.writeFile(wb, 'user-import-template.xlsx');
+  }
+
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`${API_URL}/api/admin/users/import`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getAuthToken()}` },
+        body: fd,
+      });
+      const json = await res.json() as { created: number; failed: { row: number; email: string; error: string }[] };
+      setImportResult(json);
+      if (json.created > 0) await loadUsers();
+    } catch (err) {
+      setImportResult({ created: 0, failed: [{ row: 0, email: '', error: (err as Error).message }] });
+    } finally {
+      setImporting(false);
+    }
   }
 
   function startEditUser(u: AdminUser) {
@@ -268,18 +310,47 @@ export function AdminDashboard() {
         {tab === 'users' && (
           <div className="space-y-4">
             {/* Toolbar */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <input value={userSearch} onChange={(e) => setUserSearch(e.target.value)}
                 placeholder="Search by name, email or username…"
-                className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                className="flex-1 min-w-48 bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
               <button onClick={() => setShowCreateUser((v) => !v)}
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium transition-colors">
                 + New user
               </button>
-              <button onClick={loadUsers} className="px-3 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl text-sm text-slate-500">
-                ↻
+              <button onClick={() => importInputRef.current?.click()} disabled={importing}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-sm font-medium transition-colors">
+                {importing ? '⏳ Importing…' : '📥 Import Excel'}
               </button>
+              <button onClick={downloadTemplate}
+                className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-sm font-medium transition-colors">
+                📋 Template
+              </button>
+              <button onClick={loadUsers} className="px-3 py-2 border border-slate-200 hover:bg-slate-50 rounded-xl text-sm text-slate-500">↻</button>
+              <input ref={importInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImportFile} />
             </div>
+
+            {/* Import result banner */}
+            {importResult && (
+              <div className={`rounded-xl p-4 border ${importResult.failed.length === 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="font-semibold text-sm">
+                    Import complete — <span className="text-emerald-700">{importResult.created} created</span>
+                    {importResult.failed.length > 0 && <span className="text-amber-700 ml-2">{importResult.failed.length} failed</span>}
+                  </p>
+                  <button onClick={() => setImportResult(null)} className="text-slate-400 hover:text-slate-600 text-lg leading-none">✕</button>
+                </div>
+                {importResult.failed.length > 0 && (
+                  <ul className="space-y-1">
+                    {importResult.failed.map((f, i) => (
+                      <li key={i} className="text-xs text-amber-800 font-mono">
+                        Row {f.row}{f.email ? ` (${f.email})` : ''}: {f.error}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
 
             {/* Create user form */}
             {showCreateUser && (

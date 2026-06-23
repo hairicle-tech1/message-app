@@ -1,5 +1,6 @@
+import * as XLSX from 'xlsx';
 import { db } from '../../config/db.js';
-import { syncUserTeams } from '../users/users.service.js';
+import { createUser, syncUserTeams } from '../users/users.service.js';
 
 export interface AuditLogEntry {
   id: string;
@@ -198,4 +199,48 @@ export async function syncAllDepartmentTeams(): Promise<{ synced: number }> {
   }
 
   return { synced: result.rows.length };
+}
+
+export interface ImportResult {
+  created: number;
+  failed: { row: number; email: string; error: string }[];
+}
+
+export async function importUsersFromExcel(buffer: Buffer): Promise<ImportResult> {
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { defval: '' });
+
+  let created = 0;
+  const failed: ImportResult['failed'] = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const rowNum = i + 2; // +2 = 1-based + header row
+
+    const email       = (row['email']       ?? row['Email']       ?? '').trim();
+    const username    = (row['username']    ?? row['Username']    ?? '').trim();
+    const displayName = (row['displayName'] ?? row['Display Name'] ?? row['display_name'] ?? '').trim();
+    const password    = (row['password']    ?? row['Password']    ?? '').trim();
+    const role        = (row['role']        ?? row['Role']        ?? 'staff').trim() || 'staff';
+    const department  = (row['department']  ?? row['Department']  ?? '').trim() || undefined;
+
+    if (!email || !username || !displayName || !password) {
+      failed.push({ row: rowNum, email, error: 'Missing required field (email, username, displayName, password)' });
+      continue;
+    }
+    if (password.length < 8) {
+      failed.push({ row: rowNum, email, error: 'Password must be at least 8 characters' });
+      continue;
+    }
+
+    try {
+      await createUser({ email, username, displayName, password, role, department });
+      created++;
+    } catch (err) {
+      failed.push({ row: rowNum, email, error: (err as Error).message });
+    }
+  }
+
+  return { created, failed };
 }

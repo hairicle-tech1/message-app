@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
+import { HttpError } from '../../middleware/error.middleware.js';
 import * as adminService from './admin.service.js';
 
 const auditLogQuerySchema = z.object({
@@ -40,6 +41,12 @@ export async function adminUpdateUserHandler(req: Request, res: Response) {
 export async function adminDeleteUserHandler(req: Request, res: Response) {
   await adminService.adminDeleteUser(req.params.userId);
   res.status(204).send();
+}
+
+export async function importUsersHandler(req: Request, res: Response) {
+  if (!req.file) throw new HttpError(400, 'No file uploaded');
+  const result = await adminService.importUsersFromExcel(req.file.buffer);
+  res.json(result);
 }
 
 export async function syncDepartmentTeamsHandler(_req: Request, res: Response) {
