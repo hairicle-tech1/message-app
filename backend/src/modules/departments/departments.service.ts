@@ -22,13 +22,24 @@ export async function listDepartments(): Promise<Department[]> {
 }
 
 export async function createDepartment(name: string, description?: string): Promise<Department> {
+  const trimmed = name.trim();
+
+  // Case-insensitive duplicate check
+  const existing = await db.query<{ id: string; name: string }>(
+    'SELECT id, name FROM departments WHERE LOWER(name) = LOWER($1) LIMIT 1',
+    [trimmed],
+  );
+  if (existing.rows[0]) {
+    throw new HttpError(409, `Department "${existing.rows[0].name}" already exists`);
+  }
+
   const result = await db.query<{
     id: string; name: string; description: string | null; created_at: string;
   }>(
     `INSERT INTO departments (name, description)
      VALUES ($1, $2)
      RETURNING id, name, description, created_at`,
-    [name, description ?? null],
+    [trimmed, description?.trim() ?? null],
   );
   const r = result.rows[0];
   return { id: r.id, name: r.name, description: r.description, createdAt: r.created_at };
@@ -42,7 +53,7 @@ export async function updateDepartment(
   const params: unknown[] = [];
 
   if (fields.name !== undefined) {
-    params.push(fields.name);
+    params.push(fields.name.trim());
     setClauses.push(`name = $${params.length}`);
   }
   if (fields.description !== undefined) {

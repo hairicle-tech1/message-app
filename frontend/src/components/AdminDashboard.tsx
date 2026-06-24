@@ -532,9 +532,9 @@ export function AdminDashboard() {
 
             <div className="space-y-2.5">
               {departments.map((d) => {
-                const members = users.filter((u) => u.department === d.name);
+                const members = users.filter((u) => u.department?.toLowerCase() === d.name.toLowerCase());
                 const isExpanded = expandedDept === d.id;
-                const unassigned = users.filter((u) => !u.department || u.department !== d.name);
+                const unassigned = users.filter((u) => u.department?.toLowerCase() !== d.name.toLowerCase());
                 return (
                   <div key={d.id} className="rounded-lg overflow-hidden border" style={{ background: 'var(--panel)', borderColor: 'var(--border)' }}>
                     <div className="flex items-center gap-3 px-5 py-4">

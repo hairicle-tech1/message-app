@@ -25,7 +25,7 @@ interface CreateUserInput {
 async function findOrCreateDepartmentTeam(department: string, userId: string): Promise<string> {
   // Try to find an existing team whose name matches the department
   const existing = await db.query<{ id: string }>(
-    'SELECT id FROM teams WHERE name = $1 LIMIT 1',
+    'SELECT id FROM teams WHERE LOWER(name) = LOWER($1) LIMIT 1',
     [department],
   );
   if (existing.rows[0]) return existing.rows[0].id;
@@ -54,7 +54,7 @@ async function removeFromDepartmentTeam(userId: string, department: string): Pro
   await db.query(
     `DELETE FROM team_members
      WHERE user_id = $1
-       AND team_id = (SELECT id FROM teams WHERE name = $2 LIMIT 1)`,
+       AND team_id = (SELECT id FROM teams WHERE LOWER(name) = LOWER($2) LIMIT 1)`,
     [userId, department],
   );
 }
@@ -76,6 +76,8 @@ export async function syncUserTeams(userId: string, role: string, department: st
 }
 
 export async function createUser(input: CreateUserInput) {
+  // Normalize department name on save
+  if (input.department) input = { ...input, department: input.department.trim() };
   const passwordHash = await bcrypt.hash(input.password, 12);
 
   const result = await db.query<{ id: string; role: string; department: string | null }>(
@@ -145,7 +147,7 @@ export async function updateProfile(userId: string, fields: { displayName?: stri
     setClauses.push(`display_name = $${params.length}`);
   }
   if (fields.department !== undefined) {
-    params.push(fields.department || null);
+    params.push(fields.department?.trim() || null);
     setClauses.push(`department = $${params.length}`);
   }
 
