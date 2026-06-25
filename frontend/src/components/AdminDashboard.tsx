@@ -30,7 +30,7 @@ function IconRefresh(p: React.SVGProps<SVGSVGElement>) { return <svg viewBox="0 
 
 function StatusDot({ ok = true }: { ok?: boolean }) {
   return (
-    <span className="inline-flex items-center gap-1.5 font-mono text-[11px] tracking-wide" style={{ color: ok ? 'var(--accent)' : 'var(--danger)' }}>
+    <span className="inline-flex items-center gap-1.5 font-mono text-[13px] tracking-wide" style={{ color: ok ? 'var(--accent)' : 'var(--danger)' }}>
       <span className="w-1.5 h-1.5 rounded-full" style={{ background: ok ? 'var(--accent)' : 'var(--danger)', boxShadow: `0 0 6px ${ok ? 'var(--accent)' : 'var(--danger)'}` }} />
       {ok ? 'ALL SYSTEMS NORMAL' : 'ATTENTION NEEDED'}
     </span>
@@ -45,7 +45,7 @@ function Badge({ children, tone = 'neutral' }: { children: React.ReactNode; tone
     warning: 'text-[var(--warning)] border-[var(--warning-border)] bg-[var(--warning-wash)]',
   }[tone];
   return (
-    <span className={`font-mono text-[10.5px] uppercase tracking-wide px-1.5 py-0.5 rounded border whitespace-nowrap ${toneClass}`}>
+    <span className={`font-mono text-[12px] uppercase tracking-wide px-1.5 py-0.5 rounded border whitespace-nowrap ${toneClass}`}>
       {children}
     </span>
   );
@@ -273,7 +273,7 @@ export function AdminDashboard() {
               <h1 className="text-[22px] font-bold tracking-tight" style={{ color: 'var(--text)' }}>Admin Dashboard</h1>
               <StatusDot ok />
             </div>
-            <p className="text-[13.5px]" style={{ color: 'var(--text-muted)' }}>Manage users, departments, and platform settings</p>
+            <p className="text-[15px]" style={{ color: 'var(--text-muted)' }}>Manage users, departments, and platform settings</p>
           </div>
         </div>
         <div className="flex px-8 mt-5 gap-1">
@@ -282,7 +282,7 @@ export function AdminDashboard() {
             const Icon = t.icon;
             return (
               <button key={t.id} onClick={() => setTab(t.id)}
-                className="flex items-center gap-1.5 px-4 py-2.5 font-mono text-[12.5px] font-medium border-b-2 transition-colors"
+                className="flex items-center gap-1.5 px-4 py-2.5 font-mono text-[14px] font-medium border-b-2 transition-colors"
                 style={{ borderColor: active ? 'var(--accent)' : 'transparent', color: active ? 'var(--text)' : 'var(--text-muted)', marginBottom: '-1px' }}>
                 <Icon width={14} height={14} />
                 {t.label}
@@ -311,7 +311,7 @@ export function AdminDashboard() {
                 { key: 'totalConversations' as const, label: 'Conversations',  accent: false },
               ]).map(({ key, label, accent }) => (
                 <div key={key} style={{ background: 'var(--panel)', padding: '20px 20px 18px' }}>
-                  <p className="font-mono text-[10.5px] uppercase tracking-wide mb-3" style={{ color: 'var(--text-dim)' }}>{label}</p>
+                  <p className="font-mono text-[12.5px] uppercase tracking-wide mb-3" style={{ color: 'var(--text-dim)' }}>{label}</p>
                   <p className="font-mono text-[30px] font-bold leading-none" style={{ color: accent ? 'var(--accent)' : 'var(--text)' }}>
                     {String((stats as unknown as Record<string, number>)[key] ?? 0).padStart(2, '0')}
                   </p>
@@ -320,7 +320,7 @@ export function AdminDashboard() {
             </div>
 
             <div className="rounded-lg p-5 border" style={{ background: 'var(--panel)', borderColor: 'var(--border)' }}>
-              <h3 className="font-mono text-[12px] uppercase tracking-wide mb-4" style={{ color: 'var(--text-muted)' }}>Quick actions</h3>
+              <h3 className="font-mono text-[14px] uppercase tracking-wide mb-4" style={{ color: 'var(--text-muted)' }}>Quick actions</h3>
               <div className="flex flex-wrap gap-2.5">
                 <button onClick={() => {
                   apiFetch<{ synced: number }>('/api/admin/sync-department-teams', { method: 'POST' })
@@ -389,7 +389,7 @@ export function AdminDashboard() {
                   { key: 'password'    as const, label: 'Password',     placeholder: 'min 8 characters',    type: 'password' },
                 ]).map(({ key, label, placeholder, type }) => (
                   <div key={key}>
-                    <label className="block font-mono text-[10.5px] uppercase tracking-wide mb-1.5" style={{ color: 'var(--text-dim)' }}>{label}</label>
+                    <label className="block font-mono text-[12.5px] uppercase tracking-wide mb-1.5" style={{ color: 'var(--text-dim)' }}>{label}</label>
                     <input type={type ?? 'text'} value={(newUser as Record<string, string>)[key]}
                       onChange={(e) => setNewUser((prev) => ({ ...prev, [key]: e.target.value }))}
                       placeholder={placeholder} required className="input-base w-full" />
@@ -439,15 +439,15 @@ export function AdminDashboard() {
                           <div className="flex items-center gap-3">
                             <div className="avatar-box">{u.display_name.slice(0, 1).toUpperCase()}</div>
                             <div>
-                              <p className="font-medium text-[13px]" style={{ color: 'var(--text)' }}>{u.display_name}</p>
-                              <p className="font-mono text-[11px]" style={{ color: 'var(--text-dim)' }}>@{u.username} · {u.email}</p>
+                              <p className="font-medium text-[15px]" style={{ color: 'var(--text)' }}>{u.display_name}</p>
+                              <p className="font-mono text-[13px]" style={{ color: 'var(--text-dim)' }}>@{u.username} · {u.email}</p>
                             </div>
                           </div>
                         </td>
-                        <td className="td-cell text-[13px]" style={{ color: 'var(--text-muted)' }}>{u.department ?? <span style={{ color: 'var(--text-dim)' }}>—</span>}</td>
+                        <td className="td-cell text-[14px]" style={{ color: 'var(--text-muted)' }}>{u.department ?? <span style={{ color: 'var(--text-dim)' }}>—</span>}</td>
                         <td className="td-cell"><Badge tone={u.role === 'admin' ? 'warning' : 'neutral'}>{u.role}</Badge></td>
                         <td className="td-cell"><Badge tone={u.status === 'active' ? 'accent' : 'danger'}>{u.status}</Badge></td>
-                        <td className="td-cell font-mono text-[11.5px]" style={{ color: 'var(--text-dim)' }}>{new Date(u.created_at).toLocaleDateString()}</td>
+                        <td className="td-cell font-mono text-[13px]" style={{ color: 'var(--text-dim)' }}>{new Date(u.created_at).toLocaleDateString()}</td>
                         <td className="td-cell">
                           <div className="flex gap-1.5 justify-end items-center">
                             <button onClick={() => editingUser?.id === u.id ? setEditingUser(null) : startEditUser(u)} className="btn-icon" title="Edit">
@@ -474,7 +474,7 @@ export function AdminDashboard() {
                                   { key: 'role'        as const, label: 'Role',         type: 'text',  placeholder: 'staff, admin, manager…' },
                                 ]).map(({ key, label, type, placeholder }) => (
                                   <div key={key}>
-                                    <label className="block font-mono text-[10.5px] uppercase tracking-wide mb-1.5" style={{ color: 'var(--text-dim)' }}>{label}</label>
+                                    <label className="block font-mono text-[12.5px] uppercase tracking-wide mb-1.5" style={{ color: 'var(--text-dim)' }}>{label}</label>
                                     <input type={type ?? 'text'}
                                       value={(editUserFields as Record<string, string>)[key]}
                                       onChange={(e) => setEditUserFields((p) => ({ ...p, [key]: e.target.value }))}
@@ -483,7 +483,7 @@ export function AdminDashboard() {
                                   </div>
                                 ))}
                                 <div>
-                                  <label className="block font-mono text-[10.5px] uppercase tracking-wide mb-1.5" style={{ color: 'var(--text-dim)' }}>Department</label>
+                                  <label className="block font-mono text-[12.5px] uppercase tracking-wide mb-1.5" style={{ color: 'var(--text-dim)' }}>Department</label>
                                   <select value={editUserFields.department}
                                     onChange={(e) => setEditUserFields((p) => ({ ...p, department: e.target.value }))}
                                     className="input-base w-full">
@@ -544,7 +544,7 @@ export function AdminDashboard() {
                         <div className="min-w-0">
                           {editingDept?.id !== d.id && (
                             <>
-                              <p className="font-semibold text-[14px]" style={{ color: 'var(--text)' }}>{d.name}</p>
+                              <p className="font-semibold text-[16px]" style={{ color: 'var(--text)' }}>{d.name}</p>
                               {d.description && <p className="text-[12px]" style={{ color: 'var(--text-dim)' }}>{d.description}</p>}
                             </>
                           )}
@@ -572,8 +572,8 @@ export function AdminDashboard() {
                               <li key={u.id} className="flex items-center gap-3 px-5 py-3" style={{ borderBottom: '1px solid var(--border)' }}>
                                 <div className="avatar-box" style={{ width: 26, height: 26 }}>{u.display_name.slice(0, 1).toUpperCase()}</div>
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-[13px] font-medium truncate" style={{ color: 'var(--text)' }}>{u.display_name}</p>
-                                  <p className="font-mono text-[11px]" style={{ color: 'var(--text-dim)' }}>@{u.username}</p>
+                                  <p className="text-[15px] font-medium truncate" style={{ color: 'var(--text)' }}>{u.display_name}</p>
+                                  <p className="font-mono text-[13px]" style={{ color: 'var(--text-dim)' }}>@{u.username}</p>
                                 </div>
                                 <Badge tone={u.role === 'admin' ? 'warning' : 'neutral'}>{u.role}</Badge>
                                 <Badge tone={u.status === 'active' ? 'accent' : 'danger'}>{u.status}</Badge>
@@ -612,20 +612,20 @@ export function AdminDashboard() {
                 {['auth.login','auth.login_failed','auth.totp_enabled','auth.totp_disabled','auth.password_changed','users.created','messages.deleted'].map((a) => <option key={a} value={a}>{a}</option>)}
               </select>
               <button onClick={loadLogs} className="btn-primary">Filter</button>
-              <span className="font-mono text-[11.5px] ml-auto" style={{ color: 'var(--text-dim)' }}>{logTotal} total entries</span>
+              <span className="font-mono text-[13.5px] ml-auto" style={{ color: 'var(--text-dim)' }}>{logTotal} total entries</span>
             </div>
             <div className="rounded-lg overflow-hidden border font-mono" style={{ background: 'var(--bg-deep)', borderColor: 'var(--border)' }}>
               <div className="px-5 py-2 flex gap-2 items-center" style={{ borderBottom: '1px solid var(--border)' }}>
                 <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--danger)' }} />
                 <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--warning)' }} />
                 <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent)' }} />
-                <span className="text-[11px] ml-1.5" style={{ color: 'var(--text-dim)' }}>audit.log — tail</span>
+                <span className="text-[13px] ml-1.5" style={{ color: 'var(--text-dim)' }}>audit.log — tail</span>
               </div>
               {logs.map((l) => {
                 const isFail = l.action.includes('failed');
                 const isDelete = l.action.includes('deleted');
                 return (
-                  <div key={l.id} className="flex gap-4 px-5 py-2.5 text-[12px] flex-wrap" style={{ borderBottom: '1px solid var(--border)', borderLeft: `2px solid ${isFail ? 'var(--danger)' : isDelete ? 'var(--warning)' : 'transparent'}` }}>
+                  <div key={l.id} className="flex gap-4 px-5 py-2.5 text-[13.5px] flex-wrap" style={{ borderBottom: '1px solid var(--border)', borderLeft: `2px solid ${isFail ? 'var(--danger)' : isDelete ? 'var(--warning)' : 'transparent'}` }}>
                     <span style={{ color: 'var(--text-dim)' }}>{new Date(l.createdAt).toLocaleString()}</span>
                     <span style={{ color: isFail ? 'var(--danger)' : isDelete ? 'var(--warning)' : 'var(--accent)' }}>{l.action}</span>
                     <span style={{ color: 'var(--text-muted)' }}>{l.userEmail ?? '—'}</span>
@@ -644,18 +644,18 @@ export function AdminDashboard() {
       <style>{`
         .admin-root { background: var(--bg); }
         .admin-root * { box-sizing: border-box; }
-        .th-cell { text-align: left; padding: 10px 18px; font-size: 10.5px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; font-family: monospace; font-weight: 600; }
-        .td-cell { padding: 12px 18px; }
-        .avatar-box { width: 28px; height: 28px; border-radius: 6px; background: var(--panel-alt); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-family: monospace; font-size: 11px; font-weight: 700; color: var(--accent); flex-shrink: 0; }
-        .dept-icon { width: 32px; height: 32px; border-radius: 7px; background: var(--accent-wash); border: 1px solid var(--accent-dim); display: flex; align-items: center; justify-content: center; font-family: monospace; font-weight: 700; font-size: 12px; color: var(--accent); flex-shrink: 0; }
+        .th-cell { text-align: left; padding: 12px 18px; font-size: 12.5px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; font-family: monospace; font-weight: 600; }
+        .td-cell { padding: 14px 18px; }
+        .avatar-box { width: 32px; height: 32px; border-radius: 7px; background: var(--panel-alt); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-family: monospace; font-size: 13px; font-weight: 700; color: var(--accent); flex-shrink: 0; }
+        .dept-icon { width: 36px; height: 36px; border-radius: 8px; background: var(--accent-wash); border: 1px solid var(--accent-dim); display: flex; align-items: center; justify-content: center; font-family: monospace; font-weight: 700; font-size: 14px; color: var(--accent); flex-shrink: 0; }
         .row-hover:hover { background: var(--panel-alt) !important; }
-        .input-base { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; padding: 9px 12px; font-size: 13px; color: var(--text); outline: none; }
+        .input-base { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 14px; color: var(--text); outline: none; }
         .input-base:focus { border-color: var(--accent-dim); }
-        .btn-primary { display: inline-flex; align-items: center; gap: 6px; font-family: monospace; font-size: 12.5px; font-weight: 500; padding: 8px 13px; border-radius: 7px; cursor: pointer; background: var(--accent); color: var(--bg-deep); border: 1px solid var(--accent); transition: opacity 0.15s; }
+        .btn-primary { display: inline-flex; align-items: center; gap: 7px; font-family: monospace; font-size: 14px; font-weight: 500; padding: 9px 15px; border-radius: 8px; cursor: pointer; background: var(--accent); color: var(--bg-deep); border: 1px solid var(--accent); transition: opacity 0.15s; }
         .btn-primary:hover { opacity: 0.9; }
-        .btn-ghost { display: inline-flex; align-items: center; gap: 6px; font-family: monospace; font-size: 12.5px; font-weight: 500; padding: 8px 13px; border-radius: 7px; cursor: pointer; background: transparent; color: var(--text-muted); border: 1px solid var(--border); transition: all 0.15s; }
+        .btn-ghost { display: inline-flex; align-items: center; gap: 7px; font-family: monospace; font-size: 14px; font-weight: 500; padding: 9px 15px; border-radius: 8px; cursor: pointer; background: transparent; color: var(--text-muted); border: 1px solid var(--border); transition: all 0.15s; }
         .btn-ghost:hover { color: var(--text); border-color: var(--text-dim); }
-        .btn-icon { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 1px solid var(--border); border-radius: 6px; color: var(--text-muted); cursor: pointer; transition: all 0.15s; }
+        .btn-icon { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 1px solid var(--border); border-radius: 7px; color: var(--text-muted); cursor: pointer; transition: all 0.15s; }
         .btn-icon:hover { border-color: var(--text-dim); color: var(--text); }
       `}</style>
     </div>
