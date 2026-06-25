@@ -51,8 +51,8 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
   const [showInfoPanel, setShowInfoPanel] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Message[] | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -540,10 +540,9 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
         </div>
       )}
 
-      {/* Backdrop to close any open message menu */}
-      {openMenuId && (
-        <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
-      )}
+
+      {/* Backdrop to close dropdown */}
+      {openMenuId && <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />}
 
       {/* Message list */}
       <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-1.5 bg-slate-50 dark:bg-[#0B0E14]">
@@ -570,7 +569,6 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
                   {(sender?.display_name ?? '?').slice(0, 1).toUpperCase()}
                 </div>
               )}
-
 
               {/* Bubble */}
               {isMediaBubble ? (
@@ -757,10 +755,83 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
                 </div>
               )}
 
-              {/* Reaction bar — below bubble */}
-              {!message.deletedAt && (
-                <div className={`flex flex-wrap gap-1 mt-0.5 ${mine ? 'justify-end' : 'justify-start'} ${isGroup && !mine ? 'ml-9' : ''}`}>
-                  {/* Grouped existing reactions */}
+              {/* ── Hover toolbar — inline flex item, no overflow issues ── */}
+              {!isEditing && !message.deletedAt && (
+                <div className={`self-end mb-0.5 flex-shrink-0 transition-all duration-150
+                  ${openMenuId === message.id
+                    ? 'opacity-100 pointer-events-auto'
+                    : 'opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto'
+                  }`}>
+
+                  {/* Pill: quick emojis + chevron */}
+                  <div className="flex items-center bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700 overflow-visible">
+                    {/* Quick emojis */}
+                    {QUICK_EMOJIS.map((e) => (
+                      <button key={e} onClick={() => toggleReaction(message.id, e)}
+                        className="w-8 h-8 text-[16px] flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors first:rounded-l-2xl">
+                        {e}
+                      </button>
+                    ))}
+
+                    {/* Divider */}
+                    <div className="w-px h-5 bg-slate-200 dark:bg-slate-600 mx-0.5 flex-shrink-0" />
+
+                    {/* Chevron — opens dropdown */}
+                    <div className="relative">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === message.id ? null : message.id); }}
+                        className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors rounded-r-2xl">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+
+                      {/* Dropdown menu */}
+                      {openMenuId === message.id && (
+                        <div className={`absolute top-full mt-1 z-30 w-52 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-100 dark:border-slate-700 overflow-hidden py-1 ${mine ? 'right-0' : 'left-0'}`}>
+                          {/* Reply */}
+                          <button type="button" onClick={() => { setReplyingTo(message); setOpenMenuId(null); }}
+                            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                            </svg>
+                            Reply
+                          </button>
+
+                          {/* Edit — own messages */}
+                          {mine && (
+                            <button type="button" onClick={() => { startEdit(message); setOpenMenuId(null); }}
+                              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                              Edit message
+                            </button>
+                          )}
+
+                          {/* Delete — admin only */}
+                          {mine && user?.role === 'admin' && (
+                            <>
+                              <div className="h-px bg-slate-100 dark:bg-slate-700 mx-3 my-1" />
+                              <button type="button" onClick={() => { handleDelete(message.id); setOpenMenuId(null); }}
+                                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                                Delete
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Existing reactions count — always visible below bubble */}
+              {!message.deletedAt && (message.reactions ?? []).length > 0 && (
+                <div className={`flex flex-wrap gap-1 mt-1 ${mine ? 'justify-end' : 'justify-start'} ${isGroup && !mine ? 'ml-9' : ''}`}>
                   {Object.entries(
                     (message.reactions ?? []).reduce<Record<string, { count: number; mine: boolean }>>((acc, r) => {
                       acc[r.emoji] = { count: (acc[r.emoji]?.count ?? 0) + 1, mine: acc[r.emoji]?.mine || r.userId === user!.id };
@@ -768,102 +839,14 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
                     }, {}),
                   ).map(([emoji, { count, mine: iMine }]) => (
                     <button key={emoji} onClick={() => toggleReaction(message.id, emoji)}
-                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs border transition-colors ${
-                        iMine ? 'bg-indigo-100 border-indigo-300 text-indigo-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-colors shadow-sm ${
+                        iMine
+                          ? 'bg-indigo-100 dark:bg-indigo-900/40 border-indigo-300 dark:border-indigo-600 text-indigo-700 dark:text-indigo-300'
+                          : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-slate-300'
                       }`}>
-                      {emoji} <span>{count}</span>
+                      {emoji} <span className="font-medium">{count}</span>
                     </button>
                   ))}
-                  {/* Quick-add emojis — visible on hover */}
-                  <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5">
-                    {QUICK_EMOJIS.map((e) => (
-                      <button key={e} onClick={() => toggleReaction(message.id, e)}
-                        className="w-6 h-6 rounded-full bg-slate-100 hover:bg-slate-200 text-xs flex items-center justify-center transition-colors">
-                        {e}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* ⋯ dropdown — left of bubble for mine, right for theirs */}
-              {!isEditing && !message.deletedAt && (
-                <div
-                  className={`relative self-end mb-1 transition-opacity ${
-                    openMenuId === message.id
-                      ? 'opacity-100'
-                      : 'opacity-0 group-hover:opacity-100'
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setOpenMenuId(openMenuId === message.id ? null : message.id);
-                    }}
-                    className="p-1.5 rounded-lg bg-white border border-slate-200 shadow-sm text-slate-400 hover:text-slate-600 transition-colors"
-                    title="Message options"
-                  >
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                      <circle cx="12" cy="5" r="1.5" />
-                      <circle cx="12" cy="12" r="1.5" />
-                      <circle cx="12" cy="19" r="1.5" />
-                    </svg>
-                  </button>
-
-                  {openMenuId === message.id && (
-                    <div
-                      className={`absolute z-20 bottom-full mb-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden py-1 ${
-                        mine ? 'right-0' : 'left-0'
-                      }`}
-                    >
-                      {/* Reply — available on all messages */}
-                      <button
-                        type="button"
-                        onClick={() => { setReplyingTo(message); setOpenMenuId(null); }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-                      >
-                        <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                        </svg>
-                        Reply
-                      </button>
-
-                      {/* Edit — own messages only */}
-                      {mine && (
-                        <>
-                          <div className="h-px bg-slate-100 dark:bg-slate-700 mx-2" />
-                          <button
-                            type="button"
-                            onClick={() => { startEdit(message); setOpenMenuId(null); }}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-                          >
-                            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                            Edit message
-                          </button>
-                        </>
-                      )}
-
-                      {/* Delete — admin only */}
-                      {mine && user?.role === 'admin' && (
-                        <>
-                          <div className="h-px bg-slate-100 dark:bg-slate-700 mx-2" />
-                          <button
-                            type="button"
-                            onClick={() => { setOpenMenuId(null); handleDelete(message.id); }}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                            Delete
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  )}
                 </div>
               )}
             </div>
