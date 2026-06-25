@@ -829,10 +829,10 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
                         Reply
                       </button>
 
-                      {/* Edit + Delete — own messages only */}
+                      {/* Edit — own messages only */}
                       {mine && (
                         <>
-                          <div className="h-px bg-slate-100 mx-2" />
+                          <div className="h-px bg-slate-100 dark:bg-slate-700 mx-2" />
                           <button
                             type="button"
                             onClick={() => { startEdit(message); setOpenMenuId(null); }}
@@ -843,7 +843,13 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
                             </svg>
                             Edit message
                           </button>
-                          <div className="h-px bg-slate-100 mx-2" />
+                        </>
+                      )}
+
+                      {/* Delete — admin only */}
+                      {mine && user?.role === 'admin' && (
+                        <>
+                          <div className="h-px bg-slate-100 dark:bg-slate-700 mx-2" />
                           <button
                             type="button"
                             onClick={() => { setOpenMenuId(null); handleDelete(message.id); }}
