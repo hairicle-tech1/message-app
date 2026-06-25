@@ -61,17 +61,28 @@ async function removeFromDepartmentTeam(userId: string, department: string): Pro
 
 // Assign user to ALL applicable teams: department, role-based, and catch-all
 export async function syncUserTeams(userId: string, role: string, department: string | null): Promise<void> {
-  // 1. Department team (e.g. "Engineering", "Sales")
+  // 1. Department team
   if (department) {
     await assignToDepartmentTeam(userId, department);
   }
 
-  // 2. Role-based team — admins get an "Admins" team
+  // 2. Role-based team
   if (role === 'admin') {
     await assignToDepartmentTeam(userId, 'Admins');
+
+    // Admins join ALL existing teams so they can access every workspace
+    const allTeams = await db.query<{ id: string }>('SELECT id FROM teams');
+    for (const t of allTeams.rows) {
+      await db.query(
+        `INSERT INTO team_members (team_id, user_id, role)
+         VALUES ($1, $2, 'admin')
+         ON CONFLICT (team_id, user_id) DO NOTHING`,
+        [t.id, userId],
+      );
+    }
   }
 
-  // 3. Catch-all "All Employees" — every active user
+  // 3. Catch-all "All Employees"
   await assignToDepartmentTeam(userId, 'All Employees');
 }
 
