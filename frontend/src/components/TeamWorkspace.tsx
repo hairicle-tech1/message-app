@@ -197,9 +197,9 @@ export function TeamWorkspace() {
 
       {/* ── CENTER: General channel ── */}
       {activeTeam ? (
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0" style={{ background: 'var(--bg)' }}>
           {/* Header */}
-          <div className="flex items-center gap-3 px-6 py-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
+          <div className="flex items-center gap-3 px-6 py-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg)' }}>
             <div className="team-icon" style={{ width: 36, height: 36, fontSize: 14 }}>
               {activeTeam.name.slice(0, 1).toUpperCase()}
             </div>
@@ -215,7 +215,7 @@ export function TeamWorkspace() {
           </div>
 
           {/* Messages */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-4">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-4" style={{ background: 'var(--bg)' }}>
             {messages.length === 0 && (
               <p className="text-center text-[12.5px] m-auto" style={{ color: 'var(--text-dim)' }}>
                 No messages yet — say something to {activeTeam.name}
@@ -249,7 +249,7 @@ export function TeamWorkspace() {
           </div>
 
           {/* Composer */}
-          <form onSubmit={handleSend} className="flex items-center gap-2 px-6 py-4 flex-shrink-0" style={{ borderTop: '1px solid var(--border)' }}>
+          <form onSubmit={handleSend} className="flex items-center gap-2 px-6 py-4 flex-shrink-0" style={{ borderTop: '1px solid var(--border)', background: 'var(--panel)' }}>
             <button type="button" onClick={() => fileInputRef.current?.click()} className="btn-icon" title="Attach file">
               <IconPaperclip width={15} height={15} />
             </button>
