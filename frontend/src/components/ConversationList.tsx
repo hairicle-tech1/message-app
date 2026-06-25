@@ -51,7 +51,7 @@ export function ConversationList({
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors ${
                 isActive
                   ? 'bg-indigo-600 text-white'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white dark:text-slate-300 dark:hover:bg-slate-800'
               }`}
               onClick={() => onSelect(conversation.id)}
             >

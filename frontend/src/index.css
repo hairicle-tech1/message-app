@@ -1,7 +1,51 @@
 @import "tailwindcss";
 
+/* Enable class-based dark mode for Tailwind v4 */
+@variant dark (&:where(.dark, .dark *));
+
 html,
 body,
 #root {
   height: 100%;
+}
+
+/* Root CSS variables — used by Admin Dashboard and Team Workspace */
+:root {
+  --bg:            #F8FAFC;
+  --bg-deep:       #F1F5F9;
+  --panel:         #FFFFFF;
+  --panel-alt:     #F8FAFC;
+  --border:        #E2E8F0;
+  --text:          #0F172A;
+  --text-muted:    #475569;
+  --text-dim:      #94A3B8;
+  --accent:        #059669;
+  --accent-dim:    #6EE7B7;
+  --accent-wash:   rgba(5,150,105,0.08);
+  --danger:        #DC2626;
+  --danger-border: rgba(220,38,38,0.3);
+  --danger-wash:   rgba(220,38,38,0.08);
+  --warning:       #D97706;
+  --warning-border:rgba(217,119,6,0.3);
+  --warning-wash:  rgba(217,119,6,0.08);
+}
+
+.dark {
+  --bg:            #0B0E14;
+  --bg-deep:       #080A0F;
+  --panel:         #12161F;
+  --panel-alt:     #161B26;
+  --border:        #1E2330;
+  --text:          #E7ECF3;
+  --text-muted:    #8A98AC;
+  --text-dim:      #5C6779;
+  --accent:        #5EE6A8;
+  --accent-dim:    #2B6E54;
+  --accent-wash:   rgba(94,230,168,0.08);
+  --danger:        #FF6B6B;
+  --danger-border: rgba(255,107,107,0.3);
+  --danger-wash:   rgba(255,107,107,0.08);
+  --warning:       #F5A623;
+  --warning-border:rgba(245,166,35,0.3);
+  --warning-wash:  rgba(245,166,35,0.08);
 }

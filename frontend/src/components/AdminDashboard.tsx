@@ -264,7 +264,7 @@ export function AdminDashboard() {
   ];
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden admin-root" style={rootVars}>
+    <div className="flex-1 flex flex-col overflow-hidden admin-root" style={rootFont}>
       {/* Header + tabs */}
       <div className="flex-shrink-0" style={{ background: 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
         <div className="px-8 pt-6 pb-0 flex items-center justify-between">
@@ -662,23 +662,6 @@ export function AdminDashboard() {
   );
 }
 
-const rootVars: React.CSSProperties = {
-  '--bg':            '#0B0E14',
-  '--bg-deep':       '#080A0F',
-  '--panel':         '#12161F',
-  '--panel-alt':     '#161B26',
-  '--border':        '#1E2330',
-  '--text':          '#E7ECF3',
-  '--text-muted':    '#8A98AC',
-  '--text-dim':      '#5C6779',
-  '--accent':        '#5EE6A8',
-  '--accent-dim':    '#2B6E54',
-  '--accent-wash':   'rgba(94,230,168,0.08)',
-  '--danger':        '#FF6B6B',
-  '--danger-border': 'rgba(255,107,107,0.3)',
-  '--danger-wash':   'rgba(255,107,107,0.08)',
-  '--warning':       '#F5A623',
-  '--warning-border':'rgba(245,166,35,0.3)',
-  '--warning-wash':  'rgba(245,166,35,0.08)',
-  fontFamily: "'Inter', system-ui, sans-serif",
-} as React.CSSProperties;
+// CSS variables now come from index.css (:root and .dark)
+// fontFamily only needed here as inline style
+const rootFont: React.CSSProperties = { fontFamily: "'Inter', system-ui, sans-serif" };

@@ -158,7 +158,7 @@ export function TeamWorkspace() {
   const activeTeam = teams.find((t) => t.id === activeTeamId) ?? null;
 
   return (
-    <div className="flex-1 flex overflow-hidden team-root" style={rootVars}>
+    <div className="flex-1 flex overflow-hidden team-root" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
 
       {/* ── LEFT: team list ── */}
       <div className="flex flex-col flex-shrink-0" style={{ width: 260, borderRight: '1px solid var(--border)', background: 'var(--bg)' }}>
@@ -352,20 +352,4 @@ export function TeamWorkspace() {
   );
 }
 
-const rootVars: React.CSSProperties = {
-  '--bg':            '#0B0E14',
-  '--bg-deep':       '#080A0F',
-  '--panel':         '#12161F',
-  '--panel-alt':     '#161B26',
-  '--border':        '#1E2330',
-  '--text':          '#E7ECF3',
-  '--text-muted':    '#8A98AC',
-  '--text-dim':      '#5C6779',
-  '--accent':        '#5EE6A8',
-  '--accent-dim':    '#2B6E54',
-  '--accent-wash':   'rgba(94,230,168,0.08)',
-  '--warning':       '#F5A623',
-  '--warning-border':'rgba(245,166,35,0.3)',
-  '--warning-wash':  'rgba(245,166,35,0.08)',
-  fontFamily: "'Inter', system-ui, sans-serif",
-} as React.CSSProperties;
+// CSS variables now come from index.css — no hardcoded values needed here

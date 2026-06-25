@@ -416,7 +416,7 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
   return (
     <div className="relative flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <header className="flex items-center gap-3 px-4 py-3 bg-white border-b border-slate-200 shadow-sm flex-shrink-0">
+      <header className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-[#12161F] border-b border-slate-200 dark:border-[#1E2330] shadow-sm flex-shrink-0">
         {/* Back button — mobile only */}
         {onBack && (
           <button
@@ -440,7 +440,7 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
             {title.slice(0, 1).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="font-semibold text-slate-900 text-sm leading-tight truncate">{title}</h2>
+            <h2 className="font-semibold text-slate-900 dark:text-[#E7ECF3] text-sm leading-tight truncate">{title}</h2>
             <div className="text-xs leading-tight mt-0.5">
               {isTyping ? (
                 <span className="text-indigo-500 italic">typing...</span>
@@ -546,7 +546,7 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
       )}
 
       {/* Message list */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-1.5 bg-slate-50">
+      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-1.5 bg-slate-50 dark:bg-[#0B0E14]">
         {messages.map((message, index) => {
           const mine = message.senderId === user!.id;
           const read = other ? readReceipts[message.id]?.has(other.user_id) : false;
@@ -625,7 +625,7 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
                   className={`max-w-[70%] rounded-2xl px-4 py-2.5 ${
                     mine
                       ? 'bg-indigo-600 text-white rounded-br-sm'
-                      : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm shadow-sm'
+                      : 'bg-white dark:bg-[#12161F] border border-slate-200 dark:border-[#1E2330] text-slate-800 dark:text-[#E7ECF3] rounded-bl-sm shadow-sm'
                   }`}
                 >
                   {/* Reply quote */}
@@ -899,7 +899,7 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
 
       {/* Input bar */}
       <form
-        className="flex items-center gap-2 px-4 py-3 bg-white border-t border-slate-200 flex-shrink-0"
+        className="flex items-center gap-2 px-4 py-3 bg-white dark:bg-[#12161F] border-t border-slate-200 dark:border-[#1E2330] flex-shrink-0"
         onSubmit={handleSend}
       >
         <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} />
@@ -957,7 +957,7 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
           placeholder={isRecording ? 'Recording...' : uploading ? 'Uploading...' : replyingTo ? 'Reply...' : 'Message...'}
           autoComplete="off"
           disabled={isRecording || uploading}
-          className="flex-1 bg-slate-100 rounded-full px-4 py-2.5 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white disabled:opacity-60 transition-all"
+          className="flex-1 bg-slate-100 dark:bg-[#1E2330] rounded-full px-4 py-2.5 text-sm text-slate-900 dark:text-[#E7ECF3] placeholder-slate-400 dark:placeholder-[#5C6779] focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-[#5EE6A8] focus:bg-white dark:focus:bg-[#161B26] disabled:opacity-60 transition-all"
         />
 
         {/* Send */}
