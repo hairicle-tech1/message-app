@@ -163,11 +163,11 @@ export function TeamWorkspace() {
       {/* ── LEFT: team list ── */}
       <div className="flex flex-col flex-shrink-0" style={{ width: 260, borderRight: '1px solid var(--border)', background: 'var(--bg)' }}>
         <div className="px-5 pt-6 pb-4">
-          <h1 className="text-[18px] font-bold tracking-tight mb-3" style={{ color: 'var(--text)' }}>Teams</h1>
+          <h1 className="text-[22px] font-bold tracking-tight mb-3" style={{ color: 'var(--text)' }}>Teams</h1>
           <div className="relative">
-            <IconSearch width={13} height={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-dim)' }} />
+            <IconSearch width={14} height={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-dim)' }} />
             <input value={teamSearch} onChange={(e) => setTeamSearch(e.target.value)}
-              placeholder="Find a team…" className="input-base w-full pl-8" style={{ fontSize: 12.5 }} />
+              placeholder="Find a team…" className="input-base w-full pl-8" style={{ fontSize: 14 }} />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto px-2 pb-4">
@@ -181,8 +181,8 @@ export function TeamWorkspace() {
                   {t.name.slice(0, 1).toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[13px] font-medium truncate" style={{ color: active ? 'var(--text)' : 'var(--text-muted)' }}>{t.name}</p>
-                  <p className="font-mono text-[10.5px]" style={{ color: 'var(--text-dim)' }}>
+                  <p className="text-[15px] font-medium truncate" style={{ color: active ? 'var(--text)' : 'var(--text-muted)' }}>{t.name}</p>
+                  <p className="font-mono text-[12px]" style={{ color: 'var(--text-dim)' }}>
                     {t.memberCount} member{t.memberCount !== 1 ? 's' : ''} · {t.myRole}
                   </p>
                 </div>
@@ -190,7 +190,7 @@ export function TeamWorkspace() {
             );
           })}
           {filteredTeams.length === 0 && (
-            <p className="text-center text-[12.5px] py-8" style={{ color: 'var(--text-dim)' }}>No teams found</p>
+            <p className="text-center text-[14px] py-8" style={{ color: 'var(--text-dim)' }}>No teams found</p>
           )}
         </div>
       </div>
@@ -204,8 +204,8 @@ export function TeamWorkspace() {
               {activeTeam.name.slice(0, 1).toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[15px] font-semibold" style={{ color: 'var(--text)' }}>{activeTeam.name}</p>
-              <p className="text-[12px]" style={{ color: 'var(--text-dim)' }}>
+              <p className="text-[18px] font-semibold" style={{ color: 'var(--text)' }}>{activeTeam.name}</p>
+              <p className="text-[13.5px]" style={{ color: 'var(--text-dim)' }}>
                 {activeTeam.description ?? 'General channel'}
               </p>
             </div>
@@ -217,7 +217,7 @@ export function TeamWorkspace() {
           {/* Messages */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-4" style={{ background: 'var(--bg)' }}>
             {messages.length === 0 && (
-              <p className="text-center text-[12.5px] m-auto" style={{ color: 'var(--text-dim)' }}>
+              <p className="text-center text-[14px] m-auto" style={{ color: 'var(--text-dim)' }}>
                 No messages yet — say something to {activeTeam.name}
               </p>
             )}
@@ -226,21 +226,21 @@ export function TeamWorkspace() {
                 <div className="avatar-box flex-shrink-0">{m.displayName.slice(0, 1).toUpperCase()}</div>
                 <div className="min-w-0">
                   <div className="flex items-baseline gap-2 mb-0.5">
-                    <span className="text-[13px] font-medium" style={{ color: 'var(--text)' }}>{m.displayName}</span>
-                    <span className="font-mono text-[10.5px]" style={{ color: 'var(--text-dim)' }}>
+                    <span className="text-[15px] font-semibold" style={{ color: 'var(--text)' }}>{m.displayName}</span>
+                    <span className="font-mono text-[12px]" style={{ color: 'var(--text-dim)' }}>
                       {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
                   {m.content && (
-                    <p className="text-[13.5px]" style={{ color: 'var(--text-muted)', lineHeight: 1.55 }}>
+                    <p className="text-[15px]" style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>
                       {decodeMessageText(m.content)}
                     </p>
                   )}
                   {m.attachment && (
                     <div className="inline-flex items-center gap-2 mt-1.5 px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--border)', background: 'var(--panel)' }}>
-                      <IconFile width={14} height={14} style={{ color: 'var(--text-muted)' }} />
-                      <span className="text-[12.5px]" style={{ color: 'var(--text)' }}>{m.attachment.name}</span>
-                      <span className="font-mono text-[10.5px]" style={{ color: 'var(--text-dim)' }}>{m.attachment.sizeKb} KB</span>
+                      <IconFile width={15} height={15} style={{ color: 'var(--text-muted)' }} />
+                      <span className="text-[14px]" style={{ color: 'var(--text)' }}>{m.attachment.name}</span>
+                      <span className="font-mono text-[12px]" style={{ color: 'var(--text-dim)' }}>{m.attachment.sizeKb} KB</span>
                     </div>
                   )}
                 </div>
@@ -273,7 +273,7 @@ export function TeamWorkspace() {
       {activeTeam && showMembers && (
         <div className="flex-shrink-0 flex flex-col overflow-hidden" style={{ width: 260, borderLeft: '1px solid var(--border)', background: 'var(--bg)' }}>
           <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--border)' }}>
-            <span className="font-mono text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>Workspace</span>
+            <span className="font-mono text-[13px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>Workspace</span>
             <button onClick={() => setShowMembers(false)} className="btn-icon" style={{ width: 22, height: 22 }}>
               <IconClose width={11} height={11} />
             </button>
@@ -283,8 +283,8 @@ export function TeamWorkspace() {
             {/* Pinned shelf */}
             <div className="px-5 py-4" style={{ borderBottom: '1px solid var(--border)' }}>
               <div className="flex items-center gap-1.5 mb-3">
-                <IconPin width={12} height={12} style={{ color: 'var(--text-dim)' }} />
-                <span className="font-mono text-[10.5px] uppercase tracking-wide" style={{ color: 'var(--text-dim)' }}>Pinned</span>
+                <IconPin width={13} height={13} style={{ color: 'var(--text-dim)' }} />
+                <span className="font-mono text-[12.5px] uppercase tracking-wide" style={{ color: 'var(--text-dim)' }}>Pinned</span>
               </div>
               {pinned.length > 0 ? (
                 <div className="space-y-1.5">
@@ -296,8 +296,8 @@ export function TeamWorkspace() {
                         ? <IconFile width={13} height={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
                         : <IconLink width={13} height={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />}
                       <div className="min-w-0">
-                        <p className="text-[12px] truncate" style={{ color: 'var(--text)' }}>{p.title}</p>
-                        <p className="font-mono text-[10px]" style={{ color: 'var(--text-dim)' }}>
+                        <p className="text-[13.5px] truncate" style={{ color: 'var(--text)' }}>{p.title}</p>
+                        <p className="font-mono text-[12px]" style={{ color: 'var(--text-dim)' }}>
                           {p.sizeKb ? `${p.sizeKb} KB · ` : ''}{p.addedBy}
                         </p>
                       </div>
@@ -305,13 +305,13 @@ export function TeamWorkspace() {
                   ))}
                 </div>
               ) : (
-                <p className="text-[11.5px] italic" style={{ color: 'var(--text-dim)' }}>Nothing pinned yet</p>
+                <p className="text-[13px] italic" style={{ color: 'var(--text-dim)' }}>Nothing pinned yet</p>
               )}
             </div>
 
             {/* Member roster */}
             <div className="px-5 py-4">
-              <span className="font-mono text-[10.5px] uppercase tracking-wide" style={{ color: 'var(--text-dim)' }}>
+              <span className="font-mono text-[12.5px] uppercase tracking-wide" style={{ color: 'var(--text-dim)' }}>
                 Members · {members.length}
               </span>
               <div className="mt-3 space-y-2.5">
@@ -321,8 +321,8 @@ export function TeamWorkspace() {
                       {m.displayName.slice(0, 1).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-[12.5px] truncate" style={{ color: 'var(--text)' }}>{m.displayName}</p>
-                      <p className="font-mono text-[10.5px] truncate" style={{ color: 'var(--text-dim)' }}>@{m.username}</p>
+                      <p className="text-[14px] truncate" style={{ color: 'var(--text)' }}>{m.displayName}</p>
+                      <p className="font-mono text-[12px] truncate" style={{ color: 'var(--text-dim)' }}>@{m.username}</p>
                     </div>
                     {(m.role === 'admin' || m.role === 'manager' || m.role === 'owner') && (
                       <Badge tone="warning">{m.role}</Badge>
@@ -337,15 +337,15 @@ export function TeamWorkspace() {
 
       <style>{`
         .team-root * { box-sizing: border-box; }
-        .team-icon { width: 32px; height: 32px; border-radius: 7px; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-family: monospace; font-weight: 700; font-size: 12px; color: var(--text-muted); flex-shrink: 0; background: var(--panel); }
-        .avatar-box { width: 28px; height: 28px; border-radius: 6px; background: var(--panel-alt); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-family: monospace; font-size: 11px; font-weight: 700; color: var(--accent); flex-shrink: 0; }
-        .input-base { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; padding: 9px 12px; font-size: 13px; color: var(--text); outline: none; }
+        .team-icon { width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-family: monospace; font-weight: 700; font-size: 14px; color: var(--text-muted); flex-shrink: 0; background: var(--panel); }
+        .avatar-box { width: 32px; height: 32px; border-radius: 7px; background: var(--panel-alt); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-family: monospace; font-size: 13px; font-weight: 700; color: var(--accent); flex-shrink: 0; }
+        .input-base { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 15px; color: var(--text); outline: none; }
         .input-base:focus { border-color: var(--accent-dim); }
-        .btn-primary { display: inline-flex; align-items: center; gap: 6px; font-family: monospace; font-size: 12.5px; font-weight: 500; padding: 9px 13px; border-radius: 7px; cursor: pointer; background: var(--accent); color: var(--bg-deep); border: 1px solid var(--accent); transition: opacity 0.15s; }
+        .btn-primary { display: inline-flex; align-items: center; gap: 7px; font-family: monospace; font-size: 14px; font-weight: 500; padding: 10px 15px; border-radius: 8px; cursor: pointer; background: var(--accent); color: var(--bg-deep); border: 1px solid var(--accent); transition: opacity 0.15s; }
         .btn-primary:hover { opacity: 0.9; }
-        .btn-ghost { display: inline-flex; align-items: center; gap: 6px; font-family: monospace; font-size: 12px; font-weight: 500; padding: 7px 11px; border-radius: 7px; cursor: pointer; background: transparent; color: var(--text-muted); border: 1px solid var(--border); transition: all 0.15s; }
+        .btn-ghost { display: inline-flex; align-items: center; gap: 7px; font-family: monospace; font-size: 14px; font-weight: 500; padding: 8px 13px; border-radius: 8px; cursor: pointer; background: transparent; color: var(--text-muted); border: 1px solid var(--border); transition: all 0.15s; }
         .btn-ghost:hover { color: var(--text); border-color: var(--text-dim); }
-        .btn-icon { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 1px solid var(--border); border-radius: 7px; color: var(--text-muted); cursor: pointer; transition: all 0.15s; flex-shrink: 0; }
+        .btn-icon { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 1px solid var(--border); border-radius: 8px; color: var(--text-muted); cursor: pointer; transition: all 0.15s; flex-shrink: 0; }
         .btn-icon:hover { border-color: var(--text-dim); color: var(--text); }
       `}</style>
     </div>
