@@ -16,5 +16,8 @@ router.get('/:id/members', asyncHandler(teamsController.listTeamMembersHandler))
 router.post('/:id/members', asyncHandler(teamsController.addTeamMemberHandler));
 router.delete('/:id/members/:userId', asyncHandler(teamsController.removeTeamMemberHandler));
 router.patch('/:id/members/:userId/role', asyncHandler(teamsController.updateMemberRoleHandler));
+router.get('/:id/messages', asyncHandler(teamsController.getTeamMessagesHandler));
+router.post('/:id/messages', asyncHandler(teamsController.sendTeamMessageHandler));
+router.get('/:id/pinned', asyncHandler(teamsController.getTeamPinnedHandler));
 
 export default router;

@@ -17,6 +17,7 @@ import { MessageThread } from '../components/MessageThread';
 import { NewConversationDialog } from '../components/NewConversationDialog';
 import { AdminDashboard } from '../components/AdminDashboard';
 import { ProfilePanel } from '../components/ProfilePanel';
+import { TeamWorkspace } from '../components/TeamWorkspace';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 
@@ -193,8 +194,8 @@ export function ChatPage() {
         </button>
       </nav>
 
-      {/* ── Secondary panel — hidden when dashboard is active ────────── */}
-      <aside className={`w-72 bg-slate-800 flex flex-col flex-shrink-0 border-r border-slate-700 ${section === 'dashboard' ? 'hidden' : ''}`}>
+      {/* ── Secondary panel — hidden when dashboard or teams is active ── */}
+      <aside className={`w-72 bg-slate-800 flex flex-col flex-shrink-0 border-r border-slate-700 ${section === 'dashboard' || section === 'teams' ? 'hidden' : ''}`}>
 
         {/* ── CHAT panel ── */}
         {section === 'chat' && (
@@ -343,65 +344,9 @@ export function ChatPage() {
       {/* ── Main content area ─────────────────────────────────────────── */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-        {/* Teams: show team member panel when a team is selected */}
-        {section === 'teams' && selectedTeam ? (
-          <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Team header */}
-            <header className="flex items-center gap-4 px-6 py-4 bg-white border-b border-slate-200 shadow-sm flex-shrink-0">
-              <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-lg">
-                {selectedTeam.name.slice(0, 1).toUpperCase()}
-              </div>
-              <div>
-                <h1 className="font-bold text-slate-900 text-lg leading-tight">{selectedTeam.name}</h1>
-                <p className="text-sm text-slate-400">{selectedTeam.memberCount} members · Your role: <span className="font-medium text-indigo-600">{selectedTeam.myRole}</span></p>
-              </div>
-            </header>
-
-            <div className="flex-1 overflow-y-auto p-6">
-              {/* Add member */}
-              {(selectedTeam.myRole === 'owner' || selectedTeam.myRole === 'admin') && (
-                <form onSubmit={handleAddMember} className="flex gap-2 mb-6">
-                  <input value={addMemberInput} onChange={(e) => setAddMemberInput(e.target.value)}
-                    placeholder="Paste a User ID to add member…"
-                    className="flex-1 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-                  <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-medium transition-colors">Add</button>
-                </form>
-              )}
-
-              {/* Members grid */}
-              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Members</h3>
-              <div className="grid grid-cols-1 gap-2">
-                {teamMembers.map((m) => (
-                  <div key={m.userId} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-200 shadow-sm">
-                    <div className="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-sm flex-shrink-0">
-                      {m.displayName.slice(0, 1).toUpperCase()}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-slate-900 truncate">{m.displayName}</p>
-                      <p className="text-xs text-slate-400">@{m.username}{m.department ? ` · ${m.department}` : ''}</p>
-                    </div>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                      m.role === 'owner' ? 'bg-yellow-100 text-yellow-700' :
-                      m.role === 'admin' ? 'bg-blue-100 text-blue-700' :
-                      'bg-slate-100 text-slate-500'}`}>
-                      {m.role}
-                    </span>
-                    {(selectedTeam.myRole === 'owner' || selectedTeam.myRole === 'admin') && m.role !== 'owner' && m.userId !== user.id && (
-                      <button onClick={() => handleRemoveMember(m.userId)}
-                        className="text-slate-300 hover:text-red-500 transition-colors text-xs ml-1" title="Remove">✕</button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        ) : section === 'teams' ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-400">
-            <svg className="w-16 h-16 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            <p className="text-sm">Select a team to view its members</p>
-          </div>
+        {/* Teams: full workspace replaces both sidebar and main content */}
+        {section === 'teams' ? (
+          <TeamWorkspace />
         ) : section === 'dashboard' ? (
           <AdminDashboard />
         ) : selectedId ? (

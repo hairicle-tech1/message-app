@@ -1,5 +1,6 @@
 import { db } from '../../config/db.js';
 import { HttpError } from '../../middleware/error.middleware.js';
+import { assertMember } from '../conversations/conversations.service.js';
 
 export type TeamRole = 'owner' | 'admin' | 'member';
 
@@ -233,4 +234,126 @@ function toTeam(row: {
     memberCount: Number(row.member_count),
     myRole: row.my_role,
   };
+}
+
+// ── Team workspace (General channel) ─────────────────────────────────────────
+
+async function ensureGeneralConversation(teamId: string, userId: string): Promise<string> {
+  // Find existing General channel for this team
+  const existing = await db.query<{ id: string }>(
+    `SELECT id FROM conversations WHERE team_id = $1 AND type = 'channel' AND LOWER(name) = 'general' LIMIT 1`,
+    [teamId],
+  );
+  if (existing.rows[0]) return existing.rows[0].id;
+
+  // Create it — include all current team members
+  const convResult = await db.query<{ id: string }>(
+    `INSERT INTO conversations (team_id, type, name, description, created_by)
+     VALUES ($1, 'channel', 'General', 'Team general channel', $2) RETURNING id`,
+    [teamId, userId],
+  );
+  const convId = convResult.rows[0].id;
+
+  // Add all team members
+  const members = await db.query<{ user_id: string }>(
+    'SELECT user_id FROM team_members WHERE team_id = $1',
+    [teamId],
+  );
+  for (const m of members.rows) {
+    const role = m.user_id === userId ? 'owner' : 'subscriber';
+    await db.query(
+      `INSERT INTO conversation_members (conversation_id, user_id, role)
+       VALUES ($1, $2, $3) ON CONFLICT (conversation_id, user_id) DO NOTHING`,
+      [convId, m.user_id, role],
+    );
+  }
+
+  return convId;
+}
+
+export async function getTeamMessages(teamId: string, userId: string) {
+  await assertTeamMember(teamId, userId);
+  const convId = await ensureGeneralConversation(teamId, userId);
+
+  const result = await db.query<{
+    id: string; sender_id: string | null; display_name: string | null;
+    ciphertext: Buffer; created_at: string;
+    file_id: string | null; file_name: string | null; size_bytes: string | null;
+  }>(
+    `SELECT m.id, m.sender_id, u.display_name, m.ciphertext, m.created_at,
+            f.id AS file_id, f.file_name, f.size_bytes
+     FROM messages m
+     LEFT JOIN users u ON u.id = m.sender_id
+     LEFT JOIN files f ON f.message_id = m.id
+     WHERE m.conversation_id = $1 AND m.deleted_at IS NULL
+     ORDER BY m.created_at ASC
+     LIMIT 100`,
+    [convId],
+  );
+
+  return result.rows.map((r) => ({
+    id: r.id,
+    userId: r.sender_id,
+    displayName: r.display_name ?? 'Deleted User',
+    content: r.ciphertext ? Buffer.from(r.ciphertext).toString('base64') : '',
+    createdAt: r.created_at,
+    attachment: r.file_id ? { name: r.file_name!, sizeKb: Math.round(Number(r.size_bytes) / 1024) } : undefined,
+  }));
+}
+
+export async function sendTeamMessage(teamId: string, userId: string, content: string) {
+  await assertTeamMember(teamId, userId);
+  const convId = await ensureGeneralConversation(teamId, userId);
+
+  const ciphertextBuf = Buffer.from(content, 'base64');
+  const result = await db.query<{ id: string; created_at: string }>(
+    `INSERT INTO messages (conversation_id, sender_id, type, ciphertext)
+     VALUES ($1, $2, 'text', $3) RETURNING id, created_at`,
+    [convId, userId, ciphertextBuf],
+  );
+  const msg = result.rows[0];
+
+  const userRes = await db.query<{ display_name: string }>(
+    'SELECT display_name FROM users WHERE id = $1', [userId],
+  );
+
+  return {
+    id: msg.id,
+    userId,
+    displayName: userRes.rows[0]?.display_name ?? 'Unknown',
+    content,
+    createdAt: msg.created_at,
+  };
+}
+
+export async function getTeamPinned(teamId: string, userId: string) {
+  await assertTeamMember(teamId, userId);
+  const convId = await ensureGeneralConversation(teamId, userId);
+
+  const result = await db.query<{
+    id: string; message_id: string; pinned_by_name: string | null; pinned_at: string;
+    ciphertext: Buffer; file_name: string | null; size_bytes: string | null;
+    mime_type: string | null;
+  }>(
+    `SELECT pm.id, pm.message_id, u.display_name AS pinned_by_name, pm.pinned_at,
+            m.ciphertext, f.file_name, f.size_bytes, f.mime_type
+     FROM pinned_messages pm
+     JOIN messages m ON m.id = pm.message_id
+     LEFT JOIN users u ON u.id = pm.pinned_by
+     LEFT JOIN files f ON f.message_id = m.id
+     WHERE pm.conversation_id = $1
+     ORDER BY pm.pinned_at DESC
+     LIMIT 20`,
+    [convId],
+  );
+
+  return result.rows.map((r) => ({
+    id: r.id,
+    type: r.file_name ? 'file' : 'link',
+    title: r.file_name ?? Buffer.from(r.ciphertext).toString('base64').slice(0, 60),
+    url: r.file_name ? `/api/files/${r.message_id}` : '',
+    sizeKb: r.size_bytes ? Math.round(Number(r.size_bytes) / 1024) : undefined,
+    addedBy: r.pinned_by_name ?? 'Unknown',
+    addedAt: r.pinned_at,
+  }));
 }

@@ -69,3 +69,19 @@ export async function updateMemberRoleHandler(req: Request, res: Response) {
   await teamsService.updateMemberRole(req.params.id, req.user!.id, req.params.userId, role);
   res.status(204).send();
 }
+
+export async function getTeamMessagesHandler(req: Request, res: Response) {
+  const messages = await teamsService.getTeamMessages(req.params.id, req.user!.id);
+  res.json({ messages });
+}
+
+export async function sendTeamMessageHandler(req: Request, res: Response) {
+  const { content } = z.object({ content: z.string().min(1) }).parse(req.body);
+  const message = await teamsService.sendTeamMessage(req.params.id, req.user!.id, content);
+  res.status(201).json({ message });
+}
+
+export async function getTeamPinnedHandler(req: Request, res: Response) {
+  const pinned = await teamsService.getTeamPinned(req.params.id, req.user!.id);
+  res.json({ pinned });
+}
