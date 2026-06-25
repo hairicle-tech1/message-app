@@ -957,7 +957,7 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
           placeholder={isRecording ? 'Recording...' : uploading ? 'Uploading...' : replyingTo ? 'Reply...' : 'Message...'}
           autoComplete="off"
           disabled={isRecording || uploading}
-          className="flex-1 bg-slate-100 dark:bg-[#1E2330] rounded-full px-4 py-2.5 text-sm text-slate-900 dark:text-[#E7ECF3] placeholder-slate-400 dark:placeholder-[#5C6779] focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-[#5EE6A8] focus:bg-white dark:focus:bg-[#161B26] disabled:opacity-60 transition-all"
+          className="flex-1 bg-slate-100 dark:bg-[#1E2330] rounded-full px-4 py-2.5 text-sm text-slate-900 dark:text-[#E7ECF3] placeholder-slate-400 dark:placeholder-[#5C6779] focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-[#6b8fe8] focus:bg-white dark:focus:bg-[#161B26] disabled:opacity-60 transition-all"
         />
 
         {/* Send */}

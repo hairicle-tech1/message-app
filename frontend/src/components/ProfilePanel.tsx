@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 
 const AVATAR_HEX = [
   '#6366f1','#a855f7','#ec4899','#ef4444','#f97316',
-  '#10b981','#14b8a6','#06b6d4','#3b82f6','#8b5cf6',
+  '#273c8d','#3d52a8','#1a2d6b','#4a6fa8','#2d4a9e',
 ];
 
 function avatarColor(seed: string): string {

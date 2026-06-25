@@ -172,7 +172,7 @@ export function AnnounceWorkspace() {
                     </div>
                     {(c.unread_count ?? 0) > 0 && (
                       <span className="font-mono text-[12px] px-1.5 py-0.5 rounded-full flex-shrink-0"
-                        style={{ background: 'var(--accent)', color: 'var(--bg-deep)' }}>
+                        style={{ background: 'var(--accent)', color: '#ffffff' }}>
                         {c.unread_count}
                       </span>
                     )}
@@ -271,7 +271,7 @@ export function AnnounceWorkspace() {
                 style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }} />
               <button type="submit" disabled={!draft.trim() || sending}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-lg font-mono text-[14.5px] font-medium disabled:opacity-40 transition-opacity"
-                style={{ background: 'var(--accent)', color: 'var(--bg-deep)', border: '1px solid var(--accent)' }}>
+                style={{ background: 'var(--accent)', color: '#ffffff', border: '1px solid var(--accent)' }}>
                 <IconSend width={13} height={13} /> Post
               </button>
             </form>

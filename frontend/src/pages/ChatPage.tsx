@@ -3,7 +3,7 @@ import { useTheme } from '../context/ThemeContext';
 
 const AVATAR_HEX = [
   '#6366f1','#a855f7','#ec4899','#ef4444','#f97316',
-  '#10b981','#14b8a6','#06b6d4','#3b82f6','#8b5cf6',
+  '#273c8d','#3d52a8','#1a2d6b','#4a6fa8','#2d4a9e',
 ];
 function avatarBg(seed: string): string {
   let h = 0;
@@ -17,6 +17,7 @@ import { ConversationList } from '../components/ConversationList';
 import { MessageThread } from '../components/MessageThread';
 import { NewConversationDialog } from '../components/NewConversationDialog';
 import { AdminDashboard } from '../components/AdminDashboard';
+import { AnnounceWorkspace } from '../components/AnnounceWorkspace';
 import { ProfilePanel } from '../components/ProfilePanel';
 import { TeamWorkspace } from '../components/TeamWorkspace';
 import { useAuth } from '../context/AuthContext';
@@ -210,7 +211,7 @@ export function ChatPage() {
       </nav>
 
       {/* ── Secondary panel — hidden when dashboard or teams is active ── */}
-      <aside className={`w-72 bg-slate-800 dark:bg-[#12161F] flex flex-col flex-shrink-0 border-r border-slate-700 dark:border-[#1E2330] ${section === 'dashboard' || section === 'teams' ? 'hidden' : ''}`}>
+      <aside className={`w-72 bg-slate-800 dark:bg-[#12161F] flex flex-col flex-shrink-0 border-r border-slate-700 dark:border-[#1E2330] ${section === 'dashboard' || section === 'teams' || section === 'announcements' ? 'hidden' : ''}`}>
 
         {/* ── CHAT panel ── */}
         {section === 'chat' && (
@@ -362,6 +363,8 @@ export function ChatPage() {
         {/* Teams: full workspace replaces both sidebar and main content */}
         {section === 'teams' ? (
           <TeamWorkspace />
+        ) : section === 'announcements' ? (
+          <AnnounceWorkspace />
         ) : section === 'dashboard' ? (
           <AdminDashboard />
         ) : selectedId ? (
