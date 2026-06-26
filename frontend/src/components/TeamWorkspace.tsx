@@ -277,37 +277,95 @@ export function TeamWorkspace() {
           </div>
 
           {/* Messages */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-4" style={{ background: 'var(--bg)' }}>
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-0.5" style={{ background: 'var(--bg)' }}>
             {messages.length === 0 && (
               <p className="text-center text-[14px] m-auto" style={{ color: 'var(--text-dim)' }}>
                 No messages yet — say something to {activeTeam.name}
               </p>
             )}
-            {messages.map((m) => (
-              <div key={m.id} className="flex gap-3">
-                <div className="avatar-box flex-shrink-0">{m.displayName.slice(0, 1).toUpperCase()}</div>
-                <div className="min-w-0">
-                  <div className="flex items-baseline gap-2 mb-0.5">
-                    <span className="text-[15px] font-semibold" style={{ color: 'var(--text)' }}>{m.displayName}</span>
-                    <span className="font-mono text-[12px]" style={{ color: 'var(--text-dim)' }}>
-                      {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                  {m.content && (
-                    <p className="text-[15px]" style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>
-                      {decodeMessageText(m.content)}
-                    </p>
-                  )}
-                  {m.attachment && (
-                    <div className="inline-flex items-center gap-2 mt-1.5 px-3 py-2 rounded-lg border" style={{ borderColor: 'var(--border)', background: 'var(--panel)' }}>
-                      <IconFile width={15} height={15} style={{ color: 'var(--text-muted)' }} />
-                      <span className="text-[14px]" style={{ color: 'var(--text)' }}>{m.attachment.name}</span>
-                      <span className="font-mono text-[12px]" style={{ color: 'var(--text-dim)' }}>{m.attachment.sizeKb} KB</span>
+            {messages.map((m, i) => {
+              const isMe = m.userId === user?.id;
+              const prev = messages[i - 1];
+              const next = messages[i + 1];
+
+              // Grouping: same sender within 3 minutes = grouped
+              const sameAsPrev = prev?.userId === m.userId &&
+                (new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime()) < 3 * 60 * 1000;
+              const sameAsNext = next?.userId === m.userId &&
+                (new Date(next.createdAt).getTime() - new Date(m.createdAt).getTime()) < 3 * 60 * 1000;
+
+              // First bubble in a group gets the "pointy" corner (6px) on the avatar side
+              // Subsequent bubbles get fully rounded (16px all around)
+              const R = 16; // base radius
+              const POINT = 6; // sharp corner pointing toward avatar
+              const borderRadius = isMe
+                ? `${R}px ${sameAsPrev ? R : POINT}px ${sameAsNext ? R : R}px ${R}px`
+                : `${sameAsPrev ? R : POINT}px ${R}px ${R}px ${sameAsNext ? R : R}px`;
+
+              return (
+                <div key={m.id}
+                  className={`flex items-end gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'} ${sameAsPrev ? 'mt-0.5' : 'mt-3'}`}>
+
+                  {/* Avatar — only on first message in group */}
+                  <div className="flex-shrink-0 w-7 h-7" style={{ visibility: sameAsPrev ? 'hidden' : 'visible' }}>
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center font-mono font-bold text-[12px]"
+                      style={{
+                        background: isMe ? 'var(--accent-dim)' : 'var(--panel-alt)',
+                        border: '1px solid var(--border)',
+                        color: isMe ? '#fff' : 'var(--accent)',
+                      }}>
+                      {m.displayName.slice(0, 1).toUpperCase()}
                     </div>
-                  )}
+                  </div>
+
+                  {/* Bubble column — max 62% width */}
+                  <div className="flex flex-col" style={{ maxWidth: '62%', alignItems: isMe ? 'flex-end' : 'flex-start' }}>
+                    {/* Sender name + time — only on first in group */}
+                    {!sameAsPrev && (
+                      <div className={`flex items-baseline gap-2 mb-1 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                        <span className="text-[13px] font-semibold" style={{ color: isMe ? 'var(--accent)' : 'var(--text)' }}>
+                          {isMe ? 'You' : m.displayName}
+                        </span>
+                        <span className="font-mono text-[11px]" style={{ color: 'var(--text-dim)' }}>
+                          {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Bubble */}
+                    <div style={{
+                      background: isMe ? 'var(--accent)' : 'var(--panel)',
+                      border: isMe ? 'none' : '1px solid var(--border)',
+                      borderRadius,
+                      padding: '8px 13px',
+                    }}>
+                      {m.content && (
+                        <p className="text-[14px]" style={{ color: isMe ? '#fff' : 'var(--text)', lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                          {decodeMessageText(m.content)}
+                        </p>
+                      )}
+                      {m.attachment && (
+                        <div className="inline-flex items-center gap-2 px-2 py-1.5 rounded-lg"
+                          style={{ background: isMe ? 'rgba(255,255,255,0.15)' : 'var(--panel-alt)', border: `1px solid ${isMe ? 'rgba(255,255,255,0.2)' : 'var(--border)'}` }}>
+                          <IconFile width={13} height={13} style={{ color: isMe ? '#fff' : 'var(--text-muted)', flexShrink: 0 }} />
+                          <span className="text-[13px]" style={{ color: isMe ? '#fff' : 'var(--text)' }}>{m.attachment.name}</span>
+                          <span className="font-mono text-[11px]" style={{ color: isMe ? 'rgba(255,255,255,0.6)' : 'var(--text-dim)' }}>{m.attachment.sizeKb} KB</span>
+                        </div>
+                      )}
+                      {/* Timestamp on last bubble in group */}
+                      {!sameAsNext && sameAsPrev && (
+                        <p className="font-mono text-[10px] mt-1" style={{ color: isMe ? 'rgba(255,255,255,0.55)' : 'var(--text-dim)', textAlign: isMe ? 'right' : 'left' }}>
+                          {new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Spacer to mirror avatar on isMe side */}
+                  <div className="w-7 flex-shrink-0" />
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Composer */}
