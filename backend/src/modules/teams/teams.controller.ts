@@ -71,8 +71,8 @@ export async function updateMemberRoleHandler(req: Request, res: Response) {
 }
 
 export async function getTeamMessagesHandler(req: Request, res: Response) {
-  const messages = await teamsService.getTeamMessages(req.params.id, req.user!.id);
-  res.json({ messages });
+  const result = await teamsService.getTeamMessages(req.params.id, req.user!.id);
+  res.json(result);   // { conversationId, messages }
 }
 
 export async function sendTeamMessageHandler(req: Request, res: Response) {

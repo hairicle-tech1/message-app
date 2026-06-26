@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { apiFetch, getAuthToken, API_URL } from '../api/client';
+import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
+import type { Message } from '../api/types';
 import { decodeMessageText, encodeMessageText } from '../utils/text';
 
 // ── Types (aligned to actual API responses) ───────────────────────────────────
@@ -62,9 +65,13 @@ function Badge({ children, tone = 'neutral' }: { children: React.ReactNode; tone
 }
 
 export function TeamWorkspace() {
+  const { user } = useAuth();
+  const socket = useSocket();
+
   const [teams, setTeams] = useState<TeamSummary[]>([]);
   const [activeTeamId, setActiveTeamId] = useState<string | null>(null);
   const [teamSearch, setTeamSearch] = useState('');
+  const [generalConvId, setGeneralConvId] = useState<string | null>(null);
 
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [pinned, setPinned] = useState<PinnedItem[]>([]);
@@ -75,6 +82,8 @@ export function TeamWorkspace() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const generalConvIdRef = useRef<string | null>(null);
+  useEffect(() => { generalConvIdRef.current = generalConvId; }, [generalConvId]);
 
   // Load team list
   useEffect(() => {
@@ -101,10 +110,10 @@ export function TeamWorkspace() {
       .then(({ pinned }) => setPinned(pinned))
       .catch(() => {});
 
-    apiFetch<{ messages: TeamMessage[] }>(`/api/teams/${activeTeamId}/messages`)
-      .then(({ messages }) => {
+    apiFetch<{ conversationId: string; messages: TeamMessage[] }>(`/api/teams/${activeTeamId}/messages`)
+      .then(({ conversationId, messages }) => {
+        setGeneralConvId(conversationId);
         setMessages(messages);
-        // Mark the last message as read so the backend updates delivery status
         if (messages.length > 0) {
           const lastMsg = messages[messages.length - 1];
           apiFetch(`/api/messages/${lastMsg.id}/read`, { method: 'POST' }).catch(() => {});
@@ -112,6 +121,25 @@ export function TeamWorkspace() {
       })
       .catch(() => {});
   }, [activeTeamId]);
+
+  // Real-time: listen for new messages in the General channel via socket
+  useEffect(() => {
+    if (!socket) return;
+    const handler = (msg: Message) => {
+      if (msg.conversationId !== generalConvIdRef.current) return;
+      // Convert from Message shape to TeamMessage shape
+      const teamMsg: TeamMessage = {
+        id: msg.id,
+        userId: msg.senderId,
+        displayName: (msg as unknown as { senderDisplayName?: string }).senderDisplayName ?? 'Unknown',
+        content: msg.ciphertext,
+        createdAt: msg.createdAt,
+      };
+      setMessages((prev) => prev.some((m) => m.id === msg.id) ? prev : [...prev, teamMsg]);
+    };
+    socket.on('message:new', handler);
+    return () => { socket.off('message:new', handler); };
+  }, [socket]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -123,19 +151,39 @@ export function TeamWorkspace() {
     const text = draft.trim();
     if (!text || !activeTeamId) return;
     setSending(true);
-    try {
-      const encoded = encodeMessageText(text);
-      const { message } = await apiFetch<{ message: TeamMessage }>(`/api/teams/${activeTeamId}/messages`, {
-        method: 'POST',
-        body: JSON.stringify({ content: encoded }),
-      });
-      setMessages((prev) => [...prev, message]);
-      setDraft('');
-    } catch {
-      // surfaced via toast in real app
-    } finally {
-      setSending(false);
+    const encoded = encodeMessageText(text);
+
+    // Use the standard socket message:send so all members get real-time delivery
+    if (socket && generalConvId) {
+      socket.emit(
+        'message:send',
+        { conversationId: generalConvId, ciphertext: encoded, type: 'text' },
+        (res: { ok: boolean; message?: Message }) => {
+          if (res.ok && res.message) {
+            const teamMsg: TeamMessage = {
+              id: res.message.id,
+              userId: res.message.senderId,
+              displayName: user?.displayName ?? 'Me',
+              content: res.message.ciphertext,
+              createdAt: res.message.createdAt,
+            };
+            setMessages((prev) => prev.some((m) => m.id === teamMsg.id) ? prev : [...prev, teamMsg]);
+          }
+          setSending(false);
+        },
+      );
+    } else {
+      // Fallback: REST
+      try {
+        const { message } = await apiFetch<{ message: TeamMessage }>(`/api/teams/${activeTeamId}/messages`, {
+          method: 'POST', body: JSON.stringify({ content: encoded }),
+        });
+        setMessages((prev) => [...prev, message]);
+      } finally {
+        setSending(false);
+      }
     }
+    setDraft('');
   }
 
   async function handleAttach(e: React.ChangeEvent<HTMLInputElement>) {

@@ -291,14 +291,17 @@ export async function getTeamMessages(teamId: string, userId: string) {
     [convId],
   );
 
-  return result.rows.map((r) => ({
-    id: r.id,
-    userId: r.sender_id,
-    displayName: r.display_name ?? 'Deleted User',
-    content: r.ciphertext ? Buffer.from(r.ciphertext).toString('base64') : '',
-    createdAt: r.created_at,
-    attachment: r.file_id ? { name: r.file_name!, sizeKb: Math.round(Number(r.size_bytes) / 1024) } : undefined,
-  }));
+  return {
+    conversationId: convId,       // ← frontend uses this for real-time socket subscription
+    messages: result.rows.map((r) => ({
+      id: r.id,
+      userId: r.sender_id,
+      displayName: r.display_name ?? 'Deleted User',
+      content: r.ciphertext ? Buffer.from(r.ciphertext).toString('base64') : '',
+      createdAt: r.created_at,
+      attachment: r.file_id ? { name: r.file_name!, sizeKb: Math.round(Number(r.size_bytes) / 1024) } : undefined,
+    })),
+  };
 }
 
 export async function sendTeamMessage(teamId: string, userId: string, content: string) {
