@@ -62,10 +62,11 @@ export function ChatPage() {
         if (i === -1) return prev;
         const next = [...prev];
         const [c] = next.splice(i, 1);
-        // Increment unread_count if this conversation is not currently active
+        // Increment unread_count only for the RECEIVER (not the sender)
+        const isMyMessage = m.senderId === user?.id;
         const isActive = c.id === selectedId && section === 'chat';
-        const isTeamActive = section === 'teams';  // TeamWorkspace handles its own read
-        const shouldIncrement = !isActive && !isTeamActive;
+        const isTeamActive = section === 'teams';
+        const shouldIncrement = !isMyMessage && !isActive && !isTeamActive;
         next.unshift({
           ...c,
           updated_at: m.createdAt,
@@ -140,7 +141,7 @@ export function ChatPage() {
       >
         <span className="relative">
           {icon}
-          {badge && badge > 0 && (
+          {(badge ?? 0) > 0 && (
             <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none">
               {badge > 99 ? '99+' : badge}
             </span>
