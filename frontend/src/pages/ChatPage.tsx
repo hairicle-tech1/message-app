@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
 
 const AVATAR_HEX = [
@@ -38,11 +38,6 @@ export function ChatPage() {
   // Teams state
   const [showProfile, setShowProfile] = useState(false);
   const [teams, setTeams] = useState<Team[]>([]);
-  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
-  const [newTeamName, setNewTeamName] = useState('');
-  const [showNewTeam, setShowNewTeam] = useState(false);
-  const [addMemberInput, setAddMemberInput] = useState('');
 
   useEffect(() => {
     conversationsApi.listConversations().then(({ conversations }) => {
@@ -67,7 +62,15 @@ export function ChatPage() {
         if (i === -1) return prev;
         const next = [...prev];
         const [c] = next.splice(i, 1);
-        next.unshift({ ...c, updated_at: m.createdAt });
+        // Increment unread_count if this conversation is not currently active
+        const isActive = c.id === selectedId && section === 'chat';
+        const isTeamActive = section === 'teams';  // TeamWorkspace handles its own read
+        const shouldIncrement = !isActive && !isTeamActive;
+        next.unshift({
+          ...c,
+          updated_at: m.createdAt,
+          unread_count: shouldIncrement ? (c.unread_count ?? 0) + 1 : c.unread_count,
+        });
         return next;
       });
     const reqPresence = () => socket.emit('presence:get');
@@ -84,60 +87,65 @@ export function ChatPage() {
     };
   }, [socket]);
 
-  async function handleCreateTeam(e: { preventDefault(): void }) {
-    e.preventDefault();
-    if (!newTeamName.trim()) return;
-    const { team } = await teamsApi.createTeam({ name: newTeamName.trim() });
-    setTeams((prev) => [...prev, team]);
-    setNewTeamName('');
-    setShowNewTeam(false);
-    openTeam(team);
-  }
-
-  async function openTeam(team: Team) {
-    setSelectedTeam(team);
-    const { members } = await teamsApi.listTeamMembers(team.id);
-    setTeamMembers(members);
-  }
-
-  async function handleAddMember(e: { preventDefault(): void }) {
-    e.preventDefault();
-    if (!selectedTeam || !addMemberInput.trim()) return;
-    await teamsApi.addTeamMember(selectedTeam.id, addMemberInput.trim());
-    setAddMemberInput('');
-    const { members } = await teamsApi.listTeamMembers(selectedTeam.id);
-    setTeamMembers(members);
-  }
-
-  async function handleRemoveMember(userId: string) {
-    if (!selectedTeam) return;
-    await teamsApi.removeTeamMember(selectedTeam.id, userId);
-    setTeamMembers((prev) => prev.filter((m) => m.userId !== userId));
-  }
-
   function handleConversationCreated(conv: Conversation) {
     setConversations((prev) => (prev.some((c) => c.id === conv.id) ? prev : [conv, ...prev]));
     setSelectedId(conv.id);
     setSection('chat');
   }
 
-  const announcements = conversations.filter((c) => c.type === 'channel');
-  const chats = conversations.filter((c) => c.type !== 'channel');
+  // Separate channel types for badges
+  const teamChannels    = conversations.filter((c) => c.type === 'channel' && c.team_id);
+  const announceChannels = conversations.filter((c) => c.type === 'channel' && !c.team_id);
+  const chats           = conversations.filter((c) => c.type !== 'channel');
+  const announcements   = conversations.filter((c) => c.type === 'channel');
+
+  // Unread badge counts per section
+  const chatUnread     = chats.reduce((s, c) => s + (c.unread_count ?? 0), 0);
+  const teamUnread     = teamChannels.reduce((s, c) => s + (c.unread_count ?? 0), 0);
+  const announceUnread = announceChannels.reduce((s, c) => s + (c.unread_count ?? 0), 0);
+
+  // Reset unread for a conversation when user navigates to it
+  const clearConvUnread = useCallback((convId: string) => {
+    setConversations((prev) =>
+      prev.map((c) => c.id === convId ? { ...c, unread_count: 0 } : c),
+    );
+  }, []);
 
   if (!user) return null;
 
   // ── Nav item helper ──────────────────────────────────────────────────
-  function NavItem({ id, label, icon }: { id: Section; label: string; icon: React.ReactNode }) {
+  function NavItem({ id, label, icon, badge }: { id: Section; label: string; icon: React.ReactNode; badge?: number }) {
     const active = section === id;
     return (
       <button
-        onClick={() => setSection(id)}
-        className={`flex flex-col items-center gap-1 w-full py-3 px-1 transition-colors ${
+        onClick={() => {
+          setSection(id);
+          // When switching to Teams, clear unread for all team channels
+          if (id === 'teams') {
+            setConversations((prev) =>
+              prev.map((c) => c.type === 'channel' && c.team_id ? { ...c, unread_count: 0 } : c)
+            );
+          }
+          // When switching to Announce, clear unread for general channels
+          if (id === 'announcements') {
+            setConversations((prev) =>
+              prev.map((c) => c.type === 'channel' && !c.team_id ? { ...c, unread_count: 0 } : c)
+            );
+          }
+        }}
+        className={`relative flex flex-col items-center gap-1 w-full py-3 px-1 transition-colors ${
           active ? 'text-white bg-white/10 rounded-xl' : 'text-slate-400 hover:text-white'
         }`}
         title={label}
       >
-        {icon}
+        <span className="relative">
+          {icon}
+          {badge && badge > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center leading-none">
+              {badge > 99 ? '99+' : badge}
+            </span>
+          )}
+        </span>
         <span className="text-[10px] font-medium leading-none">{label}</span>
       </button>
     );
@@ -163,19 +171,19 @@ export function ChatPage() {
           </span>
         </button>
 
-        <NavItem id="chat" label="Chat" icon={
+        <NavItem id="chat" label="Chat" badge={chatUnread} icon={
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
           </svg>
         } />
 
-        <NavItem id="teams" label="Teams" icon={
+        <NavItem id="teams" label="Teams" badge={teamUnread} icon={
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
         } />
 
-        <NavItem id="announcements" label="Announce" icon={
+        <NavItem id="announcements" label="Announce" badge={announceUnread} icon={
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
           </svg>
@@ -224,7 +232,7 @@ export function ChatPage() {
               selectedId={selectedId}
               currentUserId={user.id}
               presence={presence}
-              onSelect={(id) => setSelectedId(id)}
+              onSelect={(id) => { setSelectedId(id); clearConvUnread(id); }}
             />
             <div className="p-3 border-t border-slate-700 flex-shrink-0">
               <NewConversationDialog onCreated={handleConversationCreated} />
@@ -232,58 +240,7 @@ export function ChatPage() {
           </>
         )}
 
-        {/* ── TEAMS panel ── */}
-        {section === 'teams' && (
-          <>
-            <div className="px-4 py-4 border-b border-slate-700 flex items-center justify-between flex-shrink-0">
-              <h2 className="text-base font-bold text-white">Teams</h2>
-              <button onClick={() => setShowNewTeam((v) => !v)}
-                className="text-slate-400 hover:text-white text-xl leading-none transition-colors" title="New team">+</button>
-            </div>
-
-            {showNewTeam && (
-              <form onSubmit={handleCreateTeam} className="px-3 py-2 border-b border-slate-700 flex gap-2 flex-shrink-0">
-                <input autoFocus value={newTeamName} onChange={(e) => setNewTeamName(e.target.value)}
-                  placeholder="Team name e.g. Sales"
-                  className="flex-1 bg-slate-700 text-white text-sm rounded-lg px-3 py-1.5 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-400" />
-                <button type="submit" className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium">Add</button>
-              </form>
-            )}
-
-            <div className="flex-1 overflow-y-auto py-2">
-              {teams.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-500 px-6 text-center">
-                  <svg className="w-10 h-10 opacity-40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  <p className="text-sm">No teams yet.<br/>Click + to create your first team.</p>
-                </div>
-              ) : (
-                <ul className="px-2 space-y-0.5">
-                  {teams.map((t) => (
-                    <li key={t.id}>
-                      <button onClick={() => openTeam(t)}
-                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors ${
-                          selectedTeam?.id === t.id ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white'
-                        }`}>
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0 ${
-                          selectedTeam?.id === t.id ? 'bg-indigo-400' : 'bg-slate-600'}`}>
-                          {t.name.slice(0, 1).toUpperCase()}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold truncate">{t.name}</p>
-                          <p className={`text-xs ${selectedTeam?.id === t.id ? 'text-indigo-200' : 'text-slate-500'}`}>
-                            {t.memberCount} member{t.memberCount !== 1 ? 's' : ''} · {t.myRole}
-                          </p>
-                        </div>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </>
-        )}
+        {/* Teams section is handled by TeamWorkspace (full screen) */}
 
         {/* ── ANNOUNCEMENTS panel ── */}
         {section === 'announcements' && (

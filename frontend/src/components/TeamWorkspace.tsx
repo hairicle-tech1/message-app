@@ -9,6 +9,7 @@ interface TeamSummary {
   description: string | null;
   memberCount: number;
   myRole: string;
+  unreadCount?: number;
 }
 
 interface TeamMember {
@@ -101,7 +102,14 @@ export function TeamWorkspace() {
       .catch(() => {});
 
     apiFetch<{ messages: TeamMessage[] }>(`/api/teams/${activeTeamId}/messages`)
-      .then(({ messages }) => setMessages(messages))
+      .then(({ messages }) => {
+        setMessages(messages);
+        // Mark the last message as read so the backend updates delivery status
+        if (messages.length > 0) {
+          const lastMsg = messages[messages.length - 1];
+          apiFetch(`/api/messages/${lastMsg.id}/read`, { method: 'POST' }).catch(() => {});
+        }
+      })
       .catch(() => {});
   }, [activeTeamId]);
 
@@ -186,6 +194,12 @@ export function TeamWorkspace() {
                     {t.memberCount} member{t.memberCount !== 1 ? 's' : ''} · {t.myRole}
                   </p>
                 </div>
+                {(t.unreadCount ?? 0) > 0 && !active && (
+                  <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                    style={{ background: 'var(--danger)', color: '#fff', minWidth: 18, textAlign: 'center' }}>
+                    {t.unreadCount! > 99 ? '99+' : t.unreadCount}
+                  </span>
+                )}
               </button>
             );
           })}
