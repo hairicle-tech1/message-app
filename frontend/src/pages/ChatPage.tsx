@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTheme } from '../context/ThemeContext';
 
 const AVATAR_HEX = [
@@ -35,6 +35,12 @@ export function ChatPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [presence, setPresence] = useState<Record<string, 'online' | 'offline'>>({});
 
+  // Refs so socket handlers always see the latest values (avoid stale closure)
+  const selectedIdRef = useRef<string | null>(null);
+  const sectionRef = useRef<Section>('chat');
+  useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
+  useEffect(() => { sectionRef.current = section; }, [section]);
+
   // Teams state
   const [showProfile, setShowProfile] = useState(false);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -62,10 +68,10 @@ export function ChatPage() {
         if (i === -1) return prev;
         const next = [...prev];
         const [c] = next.splice(i, 1);
-        // Increment unread_count only for the RECEIVER (not the sender)
+        // Use refs to avoid stale closure — always see current selectedId/section
         const isMyMessage = m.senderId === user?.id;
-        const isActive = c.id === selectedId && section === 'chat';
-        const isTeamActive = section === 'teams';
+        const isActive = c.id === selectedIdRef.current && sectionRef.current === 'chat';
+        const isTeamActive = sectionRef.current === 'teams';
         const shouldIncrement = !isMyMessage && !isActive && !isTeamActive;
         next.unshift({
           ...c,
