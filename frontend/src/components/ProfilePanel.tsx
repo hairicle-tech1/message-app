@@ -8,7 +8,6 @@ const AVATAR_HEX = [
   '#6366f1','#a855f7','#ec4899','#ef4444','#f97316',
   '#273c8d','#3d52a8','#1a2d6b','#4a6fa8','#2d4a9e',
 ];
-
 function avatarColor(seed: string): string {
   let h = 0;
   for (let i = 0; i < seed.length; i++) h = seed.charCodeAt(i) + ((h << 5) - h);
@@ -17,17 +16,14 @@ function avatarColor(seed: string): string {
 
 type Tab = 'profile' | 'security' | 'notifications';
 
-interface ProfilePanelProps {
-  onClose: () => void;
-}
+interface ProfilePanelProps { onClose: () => void; }
 
 export function ProfilePanel({ onClose }: ProfilePanelProps) {
   const { user, updateUser } = useAuth();
   const [tab, setTab] = useState<Tab>('profile');
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [avatarKey, setAvatarKey] = useState(Date.now()); // bust cache after upload
+  const [avatarKey, setAvatarKey] = useState(Date.now());
 
-  // Profile tab state — initialise from user immediately so fields are never blank
   const [displayName, setDisplayName] = useState(user?.displayName ?? '');
   const [department, setDepartment] = useState('');
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
@@ -36,7 +32,6 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
   const [loadError, setLoadError] = useState('');
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
-  // Security tab state
   const [currentPw, setCurrentPw] = useState('');
   const [newPw, setNewPw] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
@@ -47,7 +42,6 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
   const [totpEnabled, setTotpEnabled] = useState(false);
   const [totpMsg, setTotpMsg] = useState('');
 
-  // Notifications tab state
   const [prefs, setPrefs] = useState({ soundEnabled: true, desktopEnabled: true, emailEnabled: false });
   const [prefsMsg, setPrefsMsg] = useState('');
 
@@ -60,22 +54,13 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
         setLoadError('');
       })
       .catch((err: Error) => setLoadError(err.message));
-
-    profileApi.getNotificationPrefs()
-      .then(({ prefs }) => setPrefs(prefs))
-      .catch(() => {});
-
-    departmentsApi.listDepartments()
-      .then(({ departments }) => setDepartments(departments))
-      .catch(() => {});
+    profileApi.getNotificationPrefs().then(({ prefs }) => setPrefs(prefs)).catch(() => {});
+    departmentsApi.listDepartments().then(({ departments }) => setDepartments(departments)).catch(() => {});
   }, []);
-
-  // ── Profile ───────────────────────────────────────────────────────────────
 
   async function handleSaveProfile(e: { preventDefault(): void }) {
     e.preventDefault();
-    setSaving(true);
-    setSaveMsg('');
+    setSaving(true); setSaveMsg('');
     try {
       const { profile: updated } = await profileApi.updateProfile({
         displayName: displayName.trim() || undefined,
@@ -84,12 +69,8 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
       setProfile(updated);
       updateUser({ displayName: updated.displayName });
       setSaveMsg('Saved!');
-    } catch (err) {
-      setSaveMsg((err as Error).message);
-    } finally {
-      setSaving(false);
-      setTimeout(() => setSaveMsg(''), 3000);
-    }
+    } catch (err) { setSaveMsg((err as Error).message); }
+    finally { setSaving(false); setTimeout(() => setSaveMsg(''), 3000); }
   }
 
   async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -99,75 +80,52 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
     try {
       const { profile: updated } = await profileApi.uploadAvatar(file);
       const v = Date.now();
-      setProfile(updated);
-      setAvatarKey(v);
-      // Propagate to AuthContext so the icon rail refreshes immediately
+      setProfile(updated); setAvatarKey(v);
       updateUser({ avatarUrl: `${profileApi.getAvatarUrl(updated.id)}?v=${v}` });
       setSaveMsg('Avatar updated!');
       setTimeout(() => setSaveMsg(''), 3000);
-    } catch (err) {
-      setSaveMsg((err as Error).message);
-    }
+    } catch (err) { setSaveMsg((err as Error).message); }
   }
 
-  // ── Security ──────────────────────────────────────────────────────────────
-
   async function handleChangePassword(e: { preventDefault(): void }) {
-    e.preventDefault();
-    setPwMsg('');
+    e.preventDefault(); setPwMsg('');
     if (newPw !== confirmPw) { setPwMsg('Passwords do not match'); return; }
     if (newPw.length < 8) { setPwMsg('Password must be at least 8 characters'); return; }
     try {
       await profileApi.changePassword(currentPw, newPw);
       setCurrentPw(''); setNewPw(''); setConfirmPw('');
       setPwMsg('Password changed!');
-    } catch (err) {
-      setPwMsg((err as Error).message);
-    } finally {
-      setTimeout(() => setPwMsg(''), 4000);
-    }
+    } catch (err) { setPwMsg((err as Error).message); }
+    finally { setTimeout(() => setPwMsg(''), 4000); }
   }
 
   async function handleSetupTotp() {
     try {
       const res = await profileApi.setupTotp();
-      setTotpQr(res.qrCodeDataUrl);
-      setTotpSecret(res.secret);
-      setTotpMsg('Scan the QR code in your authenticator app, then enter the 6-digit code to activate.');
-    } catch (err) {
-      setTotpMsg((err as Error).message);
-    }
+      setTotpQr(res.qrCodeDataUrl); setTotpSecret(res.secret);
+      setTotpMsg('Scan the QR code in your authenticator app, then enter the 6-digit code.');
+    } catch (err) { setTotpMsg((err as Error).message); }
   }
 
   async function handleEnableTotp(e: { preventDefault(): void }) {
     e.preventDefault();
     try {
       await profileApi.enableTotp(totpCode);
-      setTotpEnabled(true);
-      setTotpQr(''); setTotpSecret(''); setTotpCode('');
+      setTotpEnabled(true); setTotpQr(''); setTotpSecret(''); setTotpCode('');
       setTotpMsg('2FA enabled!');
-    } catch (err) {
-      setTotpMsg((err as Error).message);
-    } finally {
-      setTimeout(() => setTotpMsg(''), 4000);
-    }
+    } catch (err) { setTotpMsg((err as Error).message); }
+    finally { setTimeout(() => setTotpMsg(''), 4000); }
   }
 
   async function handleDisableTotp(e: { preventDefault(): void }) {
     e.preventDefault();
     try {
       await profileApi.disableTotp(totpCode);
-      setTotpEnabled(false);
-      setTotpCode('');
+      setTotpEnabled(false); setTotpCode('');
       setTotpMsg('2FA disabled.');
-    } catch (err) {
-      setTotpMsg((err as Error).message);
-    } finally {
-      setTimeout(() => setTotpMsg(''), 4000);
-    }
+    } catch (err) { setTotpMsg((err as Error).message); }
+    finally { setTimeout(() => setTotpMsg(''), 4000); }
   }
-
-  // ── Notifications ─────────────────────────────────────────────────────────
 
   async function handleTogglePref(key: keyof typeof prefs) {
     const updated = { ...prefs, [key]: !prefs[key] };
@@ -175,199 +133,251 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
     try {
       await profileApi.updateNotificationPrefs(updated);
       setPrefsMsg('Saved');
-    } catch (err) {
-      setPrefs(prefs); // revert
-      setPrefsMsg((err as Error).message);
-    } finally {
-      setTimeout(() => setPrefsMsg(''), 2000);
-    }
+    } catch (err) { setPrefs(prefs); setPrefsMsg((err as Error).message); }
+    finally { setTimeout(() => setPrefsMsg(''), 2000); }
   }
 
-  // hasAvatar is true only when the user actually has a photo stored (DB avatarUrl is set)
   const hasAvatar = Boolean(profile?.avatarUrl ?? user?.avatarUrl);
-  // avatarSrc is the cachebust URL — only used when hasAvatar is true
   const userId = profile?.id ?? user?.id;
   const avatarSrc = userId ? `${profileApi.getAvatarUrl(userId)}?v=${avatarKey}` : null;
 
+  const tabs: { id: Tab; label: string }[] = [
+    { id: 'profile', label: 'Profile' },
+    { id: 'security', label: 'Security' },
+    { id: 'notifications', label: 'Notifications' },
+  ];
+
   return (
-    <div className="absolute inset-0 z-50 flex">
+    <div className="absolute inset-0 z-50 flex" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       {/* Backdrop */}
-      <div className="flex-1 bg-black/30" onClick={onClose} />
+      <div className="flex-1" style={{ background: 'rgba(0,0,0,0.5)' }} onClick={onClose} />
 
       {/* Panel */}
-      <div className="w-80 bg-white shadow-2xl flex flex-col h-full overflow-hidden">
-        {/* Header */}
-        <div className="bg-indigo-700 px-5 pt-8 pb-6 relative flex-shrink-0">
+      <div className="w-[340px] flex flex-col h-full overflow-hidden shadow-2xl" style={{ background: 'var(--panel)', borderLeft: '1px solid var(--border)' }}>
+
+        {/* ── Header strip ── */}
+        <div className="flex-shrink-0 px-5 pt-6 pb-5 relative" style={{ background: 'var(--panel-alt)', borderBottom: '1px solid var(--border)' }}>
           <button onClick={onClose}
-            className="absolute top-3 right-3 text-indigo-300 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            className="absolute top-4 right-4 w-7 h-7 flex items-center justify-center rounded-lg transition-colors"
+            style={{ color: 'var(--text-dim)', border: '1px solid var(--border)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text)')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-dim)')}>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
 
-          {/* Avatar */}
-          <div className="relative w-fit mx-auto mb-3">
-            {/* Photo — only rendered when user has actually uploaded one */}
-            {hasAvatar && avatarSrc ? (
-              <img key={avatarKey} src={avatarSrc}
-                className="w-20 h-20 rounded-full object-cover ring-4 ring-white/30"
-                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
-            ) : (
-              /* Generated color avatar — shown when no photo uploaded */
-              <div
-                style={{ backgroundColor: avatarColor(user?.username ?? 'u') }}
-                className="w-20 h-20 rounded-full flex items-center justify-center text-white text-3xl font-bold ring-4 ring-white/30"
-              >
-                {(profile?.displayName ?? user?.displayName ?? '?').slice(0, 1).toUpperCase()}
-              </div>
-            )}
-            {/* Upload button */}
-            <button onClick={() => avatarInputRef.current?.click()}
-              className="absolute -bottom-1 -right-1 w-7 h-7 bg-white rounded-full shadow-md flex items-center justify-center text-indigo-600 hover:bg-indigo-50 transition-colors border border-indigo-100">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </button>
-            <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
-          </div>
+          {/* Avatar row */}
+          <div className="flex items-center gap-4">
+            <div className="relative flex-shrink-0">
+              {hasAvatar && avatarSrc ? (
+                <img key={avatarKey} src={avatarSrc}
+                  className="object-cover"
+                  style={{ width: 56, height: 56, borderRadius: 10, border: '2px solid var(--border)' }}
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+              ) : (
+                <div style={{
+                  width: 56, height: 56, borderRadius: 10,
+                  background: avatarColor(user?.username ?? 'u'),
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#fff', fontSize: 22, fontWeight: 700, fontFamily: 'monospace',
+                  border: '2px solid var(--border)',
+                }}>
+                  {(profile?.displayName ?? user?.displayName ?? '?').slice(0, 1).toUpperCase()}
+                </div>
+              )}
+              <button onClick={() => avatarInputRef.current?.click()}
+                className="absolute -bottom-1 -right-1 w-6 h-6 flex items-center justify-center rounded-lg transition-colors"
+                style={{ background: 'var(--accent)', border: '2px solid var(--panel-alt)' }}>
+                <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </button>
+              <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+            </div>
 
-          <p className="text-white font-bold text-center text-base leading-tight">{profile?.displayName ?? user?.displayName}</p>
-          <p className="text-indigo-300 text-xs text-center mt-0.5">@{profile?.username ?? user?.username}</p>
-          {profile?.department && (
-            <p className="text-indigo-200 text-xs text-center mt-0.5">{profile.department}</p>
-          )}
-          <span className={`block mx-auto mt-2 w-fit text-xs px-2 py-0.5 rounded-full font-medium ${
-            profile?.role === 'admin' ? 'bg-yellow-400 text-yellow-900' : 'bg-indigo-500 text-white'}`}>
-            {profile?.role}
-          </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-[15px] font-bold truncate" style={{ color: 'var(--text)' }}>
+                {profile?.displayName ?? user?.displayName}
+              </p>
+              <p className="font-mono text-[12px] truncate" style={{ color: 'var(--text-dim)' }}>
+                @{profile?.username ?? user?.username}
+              </p>
+              {profile?.department && (
+                <p className="text-[12px] truncate" style={{ color: 'var(--text-dim)' }}>{profile.department}</p>
+              )}
+              {profile?.role && (
+                <span className="inline-block mt-1 font-mono text-[10px] uppercase tracking-wide px-2 py-0.5 rounded"
+                  style={profile.role === 'admin'
+                    ? { background: 'var(--warning-wash)', color: 'var(--warning)', border: '1px solid var(--warning-border)' }
+                    : { background: 'var(--accent-wash)', color: 'var(--accent)', border: '1px solid var(--accent-dim)' }}>
+                  {profile.role}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex border-b border-slate-200 flex-shrink-0">
-          {(['profile', 'security', 'notifications'] as Tab[]).map((t) => (
-            <button key={t} onClick={() => setTab(t)}
-              className={`flex-1 py-2.5 text-xs font-semibold capitalize transition-colors ${
-                tab === t ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}>
-              {t === 'notifications' ? '🔔' : t === 'security' ? '🔒' : '👤'} {t}
+        {/* ── Tabs ── */}
+        <div className="flex flex-shrink-0" style={{ borderBottom: '1px solid var(--border)', background: 'var(--panel)' }}>
+          {tabs.map((t) => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className="flex-1 py-3 text-[12px] font-mono font-semibold transition-colors border-b-2"
+              style={{
+                borderColor: tab === t.id ? 'var(--accent)' : 'transparent',
+                color: tab === t.id ? 'var(--accent)' : 'var(--text-dim)',
+              }}>
+              {t.label}
             </button>
           ))}
         </div>
 
-        {/* Tab content */}
-        <div className="flex-1 overflow-y-auto p-5">
+        {/* ── Tab content ── */}
+        <div className="flex-1 overflow-y-auto p-5" style={{ background: 'var(--panel)' }}>
 
-          {/* ── PROFILE tab ── */}
+          {/* PROFILE */}
           {tab === 'profile' && (
             <form onSubmit={handleSaveProfile} className="space-y-4">
               {loadError && (
-                <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 text-xs text-red-600">
-                  Failed to load profile: {loadError}
+                <div className="px-3 py-2 rounded-lg text-[12px]"
+                  style={{ background: 'var(--danger-wash)', border: '1px solid var(--danger-border)', color: 'var(--danger)' }}>
+                  {loadError}
                 </div>
               )}
+
+              {/* Display Name */}
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Display Name</label>
+                <label className="block font-mono text-[11px] uppercase tracking-wide mb-1.5" style={{ color: 'var(--text-dim)' }}>Display Name</label>
                 <input value={displayName} onChange={(e) => setDisplayName(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                  className="w-full text-[13px] focus:outline-none"
+                  style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 12px', color: 'var(--text)' }}
+                  onFocus={(e) => (e.target.style.borderColor = 'var(--accent-dim)')}
+                  onBlur={(e) => (e.target.style.borderColor = 'var(--border)')} />
               </div>
+
+              {/* Department */}
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">
+                <label className="block font-mono text-[11px] uppercase tracking-wide mb-1.5" style={{ color: 'var(--text-dim)' }}>
                   Department
                   {user?.role !== 'admin' && (
-                    <span className="ml-2 text-[10px] bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded-full font-normal">admin only</span>
+                    <span className="ml-2 font-mono text-[10px] normal-case px-1.5 py-0.5 rounded"
+                      style={{ background: 'var(--panel-alt)', color: 'var(--text-dim)', border: '1px solid var(--border)' }}>
+                      admin only
+                    </span>
                   )}
                 </label>
                 {user?.role === 'admin' ? (
                   <>
                     <select value={department} onChange={(e) => setDepartment(e.target.value)}
-                      className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+                      className="w-full text-[13px] focus:outline-none"
+                      style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 12px', color: 'var(--text)' }}>
                       <option value="">— No department —</option>
-                      {departments.map((d) => (
-                        <option key={d.id} value={d.name}>{d.name}</option>
-                      ))}
+                      {departments.map((d) => <option key={d.id} value={d.name}>{d.name}</option>)}
                     </select>
-                    <p className="text-xs text-slate-400 mt-1">Changing department moves you to that team automatically.</p>
+                    <p className="text-[11px] mt-1 font-mono" style={{ color: 'var(--text-dim)' }}>Changing department moves you to that team automatically.</p>
                   </>
                 ) : (
-                  <p className="text-sm text-slate-600 px-3 py-2 bg-slate-50 rounded-xl">
-                    {profile?.department ?? <span className="italic text-slate-400">No department set</span>}
-                  </p>
+                  <div className="text-[13px] px-3 py-2 rounded-lg" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                    {profile?.department ?? <span style={{ color: 'var(--text-dim)' }}>Not set</span>}
+                  </div>
                 )}
               </div>
+
+              {/* Email — read-only */}
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Email</label>
-                <p className="text-sm text-slate-600 px-3 py-2 bg-slate-50 rounded-xl">{profile?.email}</p>
+                <label className="block font-mono text-[11px] uppercase tracking-wide mb-1.5" style={{ color: 'var(--text-dim)' }}>Email</label>
+                <div className="text-[13px] px-3 py-2 rounded-lg font-mono" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                  {profile?.email ?? '—'}
+                </div>
               </div>
+
+              {/* Username — read-only */}
               <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Username</label>
-                <p className="text-sm text-slate-600 px-3 py-2 bg-slate-50 rounded-xl">@{profile?.username}</p>
+                <label className="block font-mono text-[11px] uppercase tracking-wide mb-1.5" style={{ color: 'var(--text-dim)' }}>Username</label>
+                <div className="text-[13px] px-3 py-2 rounded-lg font-mono" style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                  @{profile?.username ?? '—'}
+                </div>
               </div>
+
               {saveMsg && (
-                <p className={`text-xs text-center font-medium ${saveMsg === 'Saved!' || saveMsg.includes('updated') ? 'text-emerald-600' : 'text-red-500'}`}>
+                <p className="text-[12px] text-center font-mono" style={{ color: saveMsg === 'Saved!' || saveMsg.includes('updated') ? 'var(--accent)' : 'var(--danger)' }}>
                   {saveMsg}
                 </p>
               )}
+
               <button type="submit" disabled={saving}
-                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition-colors">
+                className="w-full font-mono font-semibold text-[13px] disabled:opacity-50 transition-opacity hover:opacity-90"
+                style={{ background: 'var(--accent)', color: '#fff', padding: '10px', borderRadius: 8, border: '1px solid var(--accent)' }}>
                 {saving ? 'Saving…' : 'Save changes'}
               </button>
             </form>
           )}
 
-          {/* ── SECURITY tab ── */}
+          {/* SECURITY */}
           {tab === 'security' && (
             <div className="space-y-6">
               {/* Change password */}
               <div>
-                <h3 className="text-sm font-bold text-slate-700 mb-3">Change Password</h3>
-                <form onSubmit={handleChangePassword} className="space-y-3">
-                  <input type="password" value={currentPw} onChange={(e) => setCurrentPw(e.target.value)}
-                    placeholder="Current password"
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-                  <input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)}
-                    placeholder="New password (min 8 chars)"
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-                  <input type="password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)}
-                    placeholder="Confirm new password"
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                <h3 className="font-mono text-[12px] uppercase tracking-wide mb-3" style={{ color: 'var(--text-muted)' }}>Change Password</h3>
+                <form onSubmit={handleChangePassword} className="space-y-2.5">
+                  {[
+                    { val: currentPw, set: setCurrentPw, ph: 'Current password' },
+                    { val: newPw, set: setNewPw, ph: 'New password (min 8 chars)' },
+                    { val: confirmPw, set: setConfirmPw, ph: 'Confirm new password' },
+                  ].map(({ val, set, ph }) => (
+                    <input key={ph} type="password" value={val} onChange={(e) => set(e.target.value)}
+                      placeholder={ph}
+                      className="w-full text-[13px] focus:outline-none"
+                      style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 12px', color: 'var(--text)' }}
+                      onFocus={(e) => (e.target.style.borderColor = 'var(--accent-dim)')}
+                      onBlur={(e) => (e.target.style.borderColor = 'var(--border)')} />
+                  ))}
                   {pwMsg && (
-                    <p className={`text-xs ${pwMsg === 'Password changed!' ? 'text-emerald-600' : 'text-red-500'}`}>{pwMsg}</p>
+                    <p className="text-[12px] font-mono" style={{ color: pwMsg === 'Password changed!' ? 'var(--accent)' : 'var(--danger)' }}>{pwMsg}</p>
                   )}
-                  <button type="submit"
-                    className="w-full py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-sm font-semibold transition-colors">
+                  <button type="submit" className="w-full font-mono font-semibold text-[13px] transition-opacity hover:opacity-90"
+                    style={{ background: 'var(--panel-alt)', border: '1px solid var(--border)', color: 'var(--text)', padding: '9px', borderRadius: 8 }}>
                     Update password
                   </button>
                 </form>
               </div>
 
               {/* 2FA */}
-              <div className="border-t border-slate-100 pt-5">
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 20 }}>
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <h3 className="text-sm font-bold text-slate-700">Two-Factor Auth (2FA)</h3>
-                    <p className="text-xs text-slate-400 mt-0.5">TOTP via authenticator app</p>
+                    <h3 className="font-mono text-[12px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>Two-Factor Auth</h3>
+                    <p className="text-[11px] font-mono mt-0.5" style={{ color: 'var(--text-dim)' }}>TOTP authenticator app</p>
                   </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${totpEnabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                  <span className="font-mono text-[10px] uppercase px-2 py-0.5 rounded"
+                    style={totpEnabled
+                      ? { background: 'var(--accent-wash)', color: 'var(--accent)', border: '1px solid var(--accent-dim)' }
+                      : { background: 'var(--panel-alt)', color: 'var(--text-dim)', border: '1px solid var(--border)' }}>
                     {totpEnabled ? 'Enabled' : 'Disabled'}
                   </span>
                 </div>
 
                 {!totpEnabled && !totpQr && (
-                  <button onClick={handleSetupTotp}
-                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-semibold transition-colors">
+                  <button onClick={handleSetupTotp} className="w-full font-mono font-semibold text-[13px] transition-opacity hover:opacity-90"
+                    style={{ background: 'var(--accent)', color: '#fff', padding: '9px', borderRadius: 8, border: '1px solid var(--accent)' }}>
                     Set up 2FA
                   </button>
                 )}
 
                 {totpQr && (
                   <div className="space-y-3">
-                    <img src={totpQr} alt="QR Code" className="w-40 h-40 mx-auto rounded-xl border border-slate-200" />
-                    <p className="text-xs text-slate-500 text-center break-all">Secret: <span className="font-mono text-slate-700">{totpSecret}</span></p>
+                    <img src={totpQr} alt="QR Code" className="w-36 h-36 mx-auto rounded-lg" style={{ border: '1px solid var(--border)' }} />
+                    <p className="text-[10px] text-center font-mono break-all" style={{ color: 'var(--text-dim)' }}>
+                      Secret: <span style={{ color: 'var(--text)' }}>{totpSecret}</span>
+                    </p>
                     <form onSubmit={handleEnableTotp} className="flex gap-2">
                       <input value={totpCode} onChange={(e) => setTotpCode(e.target.value)}
                         maxLength={6} placeholder="6-digit code"
-                        className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-                      <button type="submit" className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold">
+                        className="flex-1 text-[13px] text-center tracking-widest focus:outline-none font-mono"
+                        style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 12px', color: 'var(--text)' }} />
+                      <button type="submit" className="px-3 font-mono font-semibold text-[12px]"
+                        style={{ background: 'var(--accent)', color: '#fff', borderRadius: 8, border: '1px solid var(--accent)' }}>
                         Activate
                       </button>
                     </form>
@@ -378,15 +388,17 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
                   <form onSubmit={handleDisableTotp} className="flex gap-2">
                     <input value={totpCode} onChange={(e) => setTotpCode(e.target.value)}
                       maxLength={6} placeholder="Enter code to disable"
-                      className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-red-400" />
-                    <button type="submit" className="px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-semibold">
+                      className="flex-1 text-[13px] text-center tracking-widest focus:outline-none font-mono"
+                      style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 12px', color: 'var(--text)' }} />
+                    <button type="submit" className="px-3 font-mono font-semibold text-[12px]"
+                      style={{ background: 'var(--danger-wash)', color: 'var(--danger)', borderRadius: 8, border: '1px solid var(--danger-border)' }}>
                       Disable
                     </button>
                   </form>
                 )}
 
                 {totpMsg && (
-                  <p className={`text-xs mt-2 ${totpMsg.includes('enabled') || totpMsg.includes('Scan') ? 'text-indigo-600' : totpMsg.includes('!') ? 'text-emerald-600' : 'text-red-500'}`}>
+                  <p className="text-[11px] mt-2 font-mono" style={{ color: totpMsg.includes('!') || totpMsg.includes('Scan') ? 'var(--accent)' : 'var(--text-dim)' }}>
                     {totpMsg}
                   </p>
                 )}
@@ -394,33 +406,40 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
             </div>
           )}
 
-          {/* ── NOTIFICATIONS tab ── */}
+          {/* NOTIFICATIONS */}
           {tab === 'notifications' && (
-            <div className="space-y-4">
-              <p className="text-xs text-slate-400">Control how you receive notifications.</p>
+            <div className="space-y-3">
+              <p className="font-mono text-[11px] uppercase tracking-wide mb-4" style={{ color: 'var(--text-dim)' }}>Notification preferences</p>
 
               {([
                 { key: 'soundEnabled' as const, label: 'Sound', desc: 'Play a sound for new messages' },
-                { key: 'desktopEnabled' as const, label: 'Desktop notifications', desc: 'Show browser/OS notifications' },
-                { key: 'emailEnabled' as const, label: 'Email notifications', desc: 'Send email for missed messages' },
+                { key: 'desktopEnabled' as const, label: 'Desktop', desc: 'Browser/OS push notifications' },
+                { key: 'emailEnabled' as const, label: 'Email', desc: 'Email for missed messages' },
               ]).map(({ key, label, desc }) => (
-                <div key={key} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                <div key={key} className="flex items-center justify-between p-3 rounded-lg"
+                  style={{ background: 'var(--bg)', border: '1px solid var(--border)' }}>
                   <div>
-                    <p className="text-sm font-semibold text-slate-700">{label}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">{desc}</p>
+                    <p className="text-[13px] font-semibold" style={{ color: 'var(--text)' }}>{label}</p>
+                    <p className="text-[11px] font-mono mt-0.5" style={{ color: 'var(--text-dim)' }}>{desc}</p>
                   </div>
                   <button onClick={() => handleTogglePref(key)}
-                    className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${prefs[key] ? 'bg-indigo-600' : 'bg-slate-300'}`}>
-                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${prefs[key] ? 'translate-x-5' : 'translate-x-0'}`} />
+                    className="relative flex-shrink-0 transition-colors"
+                    style={{ width: 40, height: 22, borderRadius: 11, background: prefs[key] ? 'var(--accent)' : 'var(--border)' }}>
+                    <span className="absolute top-1 transition-transform"
+                      style={{ width: 14, height: 14, borderRadius: 7, background: '#fff', left: 4, transform: prefs[key] ? 'translateX(18px)' : 'translateX(0)' }} />
                   </button>
                 </div>
               ))}
 
-              {prefsMsg && <p className="text-xs text-emerald-600 text-center">{prefsMsg}</p>}
+              {prefsMsg && <p className="text-[12px] text-center font-mono" style={{ color: 'var(--accent)' }}>{prefsMsg}</p>}
             </div>
           )}
         </div>
       </div>
+
+      <style>{`
+        select option { background: var(--panel); color: var(--text); }
+      `}</style>
     </div>
   );
 }
