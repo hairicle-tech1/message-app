@@ -248,6 +248,43 @@ CREATE TABLE call_participants (
     UNIQUE (call_id, user_id)
 );
 
+-- Tasks (personal to-do list per user)
+
+CREATE TABLE tasks (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL,
+    done        BOOLEAN NOT NULL DEFAULT FALSE,
+    priority    TEXT NOT NULL DEFAULT 'normal', -- low | normal | high
+    due_date    DATE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_tasks_user_id ON tasks(user_id, done, due_date);
+
+-- Meetings / calendar events
+
+CREATE TABLE meetings (
+    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    created_by  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL,
+    description TEXT,
+    location    TEXT,
+    start_at    TIMESTAMPTZ NOT NULL,
+    end_at      TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE meeting_attendees (
+    meeting_id  UUID NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status      TEXT NOT NULL DEFAULT 'pending', -- pending | accepted | declined
+    PRIMARY KEY (meeting_id, user_id)
+);
+
+CREATE INDEX idx_meetings_created_by ON meetings(created_by, start_at);
+CREATE INDEX idx_meeting_attendees_user ON meeting_attendees(user_id);
+
 -- Audit logs
 
 CREATE TABLE audit_logs (

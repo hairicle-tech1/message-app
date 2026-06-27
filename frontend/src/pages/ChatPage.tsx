@@ -140,9 +140,8 @@ export function ChatPage() {
             );
           }
         }}
-        className={`relative flex flex-col items-center gap-1 w-full py-3 px-1 transition-colors ${
-          active ? 'text-white bg-white/10 rounded-xl' : 'text-slate-400 hover:text-white'
-        }`}
+        className="relative flex flex-col items-center gap-1 w-full py-3 px-1 transition-colors rounded-xl"
+        style={{ color: active ? 'var(--accent)' : 'var(--text-dim)', background: active ? 'var(--accent-wash)' : 'transparent' }}
         title={label}
       >
         <span className="relative">
@@ -159,11 +158,11 @@ export function ChatPage() {
   }
 
   return (
-    <div className="relative flex h-full overflow-hidden bg-slate-50 dark:bg-[#0B0E14]">
+    <div className="relative flex h-full overflow-hidden" style={{ background: 'var(--bg)' }}>
       {showProfile && <ProfilePanel onClose={() => setShowProfile(false)} />}
 
       {/* ── Icon navigation (like MS Teams left rail) ─────────────────── */}
-      <nav className="w-16 bg-slate-900 flex flex-col items-center py-3 gap-1 flex-shrink-0 border-r border-slate-800">
+      <nav className="w-16 flex flex-col items-center py-3 gap-1 flex-shrink-0" style={{ background: 'var(--bg)', borderRight: '1px solid var(--border)' }}>
         {/* User avatar — click to open profile */}
         <button onClick={() => setShowProfile(true)} title="My profile"
           style={{ backgroundColor: avatarBg(user.username) }}
@@ -207,7 +206,7 @@ export function ChatPage() {
         <div className="flex-1" />
         {/* Theme toggle */}
         <button onClick={toggleTheme} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-          className="text-slate-400 hover:text-slate-200 transition-colors p-2 rounded-xl hover:bg-slate-800 mb-1">
+          className="transition-colors p-2 rounded-xl mb-1 hover-panel-alt" style={{ color: 'var(--text-dim)' }}>
           {theme === 'dark' ? (
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.6} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
@@ -218,7 +217,7 @@ export function ChatPage() {
             </svg>
           )}
         </button>
-        <button onClick={logout} className="text-slate-500 hover:text-red-400 transition-colors p-2 rounded-xl hover:bg-slate-800" title="Sign out">
+        <button onClick={logout} className="transition-colors p-2 rounded-xl hover-panel-alt" style={{ color: 'var(--text-dim)' }} title="Sign out">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
           </svg>
@@ -226,13 +225,13 @@ export function ChatPage() {
       </nav>
 
       {/* ── Secondary panel — hidden when dashboard or teams is active ── */}
-      <aside className={`w-72 bg-slate-800 dark:bg-[#12161F] flex flex-col flex-shrink-0 border-r border-slate-700 dark:border-[#1E2330] ${section === 'dashboard' || section === 'teams' || section === 'announcements' ? 'hidden' : ''}`}>
+      <aside className={`w-72 flex flex-col flex-shrink-0 ${section === 'dashboard' || section === 'teams' || section === 'announcements' ? 'hidden' : ''}`} style={{ background: 'var(--bg)', borderRight: '1px solid var(--border)' }}>
 
         {/* ── CHAT panel ── */}
         {section === 'chat' && (
           <>
-            <div className="px-4 py-4 border-b border-slate-700 flex-shrink-0">
-              <h2 className="text-base font-bold text-white">Chat</h2>
+            <div className="px-5 pt-6 pb-0 flex-shrink-0">
+              <h1 className="text-[22px] font-bold tracking-tight mb-3" style={{ color: 'var(--text)' }}>Chat</h1>
             </div>
             <ConversationList
               conversations={chats}
@@ -241,7 +240,7 @@ export function ChatPage() {
               presence={presence}
               onSelect={(id) => { setSelectedId(id); clearConvUnread(id); }}
             />
-            <div className="p-3 border-t border-slate-700 flex-shrink-0">
+            <div className="p-3 flex-shrink-0" style={{ borderTop: '1px solid var(--border)' }}>
               <NewConversationDialog onCreated={handleConversationCreated} />
             </div>
           </>
@@ -252,27 +251,25 @@ export function ChatPage() {
         {/* ── ANNOUNCEMENTS panel ── */}
         {section === 'announcements' && (
           <>
-            <div className="px-4 py-4 border-b border-slate-700 flex-shrink-0">
-              <h2 className="text-base font-bold text-white">Announcements</h2>
-              <p className="text-xs text-slate-400 mt-0.5">Grouped by division</p>
+            <div className="px-4 py-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
+              <h2 className="text-base font-bold" style={{ color: 'var(--text)' }}>Announcements</h2>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-dim)' }}>Grouped by division</p>
             </div>
 
             <div className="flex-1 overflow-y-auto py-2">
-              {/* General — channels with no team (visible to everyone) */}
               {(() => {
                 const general = announcements.filter((c) => !c.team_id);
                 return general.length > 0 ? (
                   <div className="mb-2">
-                    <p className="px-4 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-widest">🌐 General</p>
+                    <p className="px-4 py-1 text-[10px] font-bold font-mono uppercase tracking-widest" style={{ color: 'var(--text-dim)' }}>🌐 General</p>
                     {general.map((c) => (
                       <button key={c.id} onClick={() => setSelectedId(c.id)}
-                        className={`w-full flex items-center gap-3 px-4 py-2 text-left transition-colors ${
-                          selectedId === c.id ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white'
-                        }`}>
+                        className="w-full flex items-center gap-3 px-4 py-2 text-left transition-colors"
+                        style={selectedId === c.id ? { background: 'var(--accent-wash)', borderLeft: '2px solid var(--accent)' } : { borderLeft: '2px solid transparent' }}>
                         <span className="text-base">📢</span>
                         <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">{c.name ?? 'Announcement'}</p>
-                          {c.unread_count ? <span className={`text-xs ${selectedId === c.id ? 'text-indigo-200' : 'text-indigo-400'}`}>{c.unread_count} new</span> : null}
+                          <p className="text-sm font-medium truncate" style={{ color: selectedId === c.id ? 'var(--text)' : 'var(--text-muted)' }}>{c.name ?? 'Announcement'}</p>
+                          {c.unread_count ? <span className="text-xs font-mono" style={{ color: 'var(--accent)' }}>{c.unread_count} new</span> : null}
                         </div>
                       </button>
                     ))}
@@ -280,24 +277,22 @@ export function ChatPage() {
                 ) : null;
               })()}
 
-              {/* Grouped by team */}
               {teams.map((team) => {
                 const teamChannels = announcements.filter((c) => c.team_id === team.id);
                 if (teamChannels.length === 0) return null;
                 return (
                   <div key={team.id} className="mb-2">
-                    <p className="px-4 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-widest truncate">
+                    <p className="px-4 py-1 text-[10px] font-bold font-mono uppercase tracking-widest truncate" style={{ color: 'var(--text-dim)' }}>
                       🏢 {team.name}
                     </p>
                     {teamChannels.map((c) => (
                       <button key={c.id} onClick={() => setSelectedId(c.id)}
-                        className={`w-full flex items-center gap-3 px-4 py-2 text-left transition-colors ${
-                          selectedId === c.id ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-white'
-                        }`}>
+                        className="w-full flex items-center gap-3 px-4 py-2 text-left transition-colors"
+                        style={selectedId === c.id ? { background: 'var(--accent-wash)', borderLeft: '2px solid var(--accent)' } : { borderLeft: '2px solid transparent' }}>
                         <span className="text-base">📢</span>
                         <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">{c.name ?? 'Announcement'}</p>
-                          {c.unread_count ? <span className={`text-xs ${selectedId === c.id ? 'text-indigo-200' : 'text-indigo-400'}`}>{c.unread_count} new</span> : null}
+                          <p className="text-sm font-medium truncate" style={{ color: selectedId === c.id ? 'var(--text)' : 'var(--text-muted)' }}>{c.name ?? 'Announcement'}</p>
+                          {c.unread_count ? <span className="text-xs font-mono" style={{ color: 'var(--accent)' }}>{c.unread_count} new</span> : null}
                         </div>
                       </button>
                     ))}
@@ -306,14 +301,14 @@ export function ChatPage() {
               })}
 
               {announcements.length === 0 && (
-                <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-500 px-6 text-center mt-12">
+                <div className="flex flex-col items-center justify-center h-full gap-3 px-6 text-center mt-12" style={{ color: 'var(--text-dim)' }}>
                   <span className="text-4xl opacity-40">📢</span>
                   <p className="text-sm">No announcement channels yet.<br/>Create a channel conversation to get started.</p>
                 </div>
               )}
             </div>
 
-            <div className="p-3 border-t border-slate-700 flex-shrink-0">
+            <div className="p-3 flex-shrink-0" style={{ borderTop: '1px solid var(--border)' }}>
               <NewConversationDialog onCreated={handleConversationCreated} />
             </div>
           </>
@@ -339,7 +334,7 @@ export function ChatPage() {
             onBack={() => setSelectedId(null)}
           />
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-slate-400">
+          <div className="flex-1 flex flex-col items-center justify-center gap-3" style={{ color: 'var(--text-dim)' }}>
             <svg className="w-16 h-16 opacity-20" fill="currentColor" viewBox="0 0 20 20">
               <path d="M2 5a2 2 0 012-2h7a2 2 0 012 2v4a2 2 0 01-2 2H9l-3 3v-3H4a2 2 0 01-2-2V5z" />
               <path d="M15 7v2a4 4 0 01-4 4H9.828l-1.766 1.767c.28.149.599.233.938.233h2l3 3v-3h2a2 2 0 002-2V9a2 2 0 00-2-2h-1z" />

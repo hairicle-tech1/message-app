@@ -30,6 +30,9 @@ body,
   --warning-wash:  rgba(217,119,6,0.08);
 }
 
+/* Global utility used across all panels */
+.hover-panel-alt:hover { background: var(--panel-alt) !important; }
+
 .dark {
   --bg:            #0B0E14;
   --bg-deep:       #080A0F;

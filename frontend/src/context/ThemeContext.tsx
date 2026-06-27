@@ -12,7 +12,14 @@ const ThemeContext = createContext<ThemeContextValue>({ theme: 'dark', toggleThe
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() => {
     const saved = localStorage.getItem('theme') as Theme | null;
-    return saved ?? 'dark';
+    const initial = saved ?? 'dark';
+    // Apply synchronously so the first paint already has the correct class
+    if (initial === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    return initial;
   });
 
   useEffect(() => {

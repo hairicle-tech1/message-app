@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Conversation } from '../api/types';
 import { getConversationTitle, getOtherMember } from '../utils/conversation';
 import { decodeMessageText } from '../utils/text';
@@ -17,81 +18,138 @@ export function ConversationList({
   presence,
   onSelect,
 }: ConversationListProps) {
-  if (conversations.length === 0) {
-    return <p className="px-4 py-3 text-sm text-slate-500">No conversations yet.</p>;
-  }
+  const [search, setSearch] = useState('');
+
+  const filtered = conversations.filter((c) => {
+    if (!search.trim()) return true;
+    const title = getConversationTitle(c, currentUserId).toLowerCase();
+    return title.includes(search.toLowerCase());
+  });
 
   return (
-    <ul className="flex-1 overflow-y-auto py-1 px-2 space-y-0.5">
-      {conversations.map((conversation) => {
-        const title = getConversationTitle(conversation, currentUserId);
-        const other = conversation.type === 'direct' ? getOtherMember(conversation, currentUserId) : null;
-        const isOnline = other ? presence[other.user_id] === 'online' : false;
-        const isActive = conversation.id === selectedId;
-        const unread = conversation.unread_count ?? 0;
+    <div className="flex flex-col flex-1 min-h-0">
+      {/* Search — matches TeamWorkspace "Find a team…" */}
+      <div className="px-3 pt-3 pb-2 flex-shrink-0">
+        <div className="relative">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--text-dim)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Find a conversation…"
+            className="w-full pl-8 pr-3 py-2 rounded-lg text-[13px] focus:outline-none"
+            style={{
+              background: 'var(--panel)',
+              border: '1px solid var(--border)',
+              color: 'var(--text)',
+              fontSize: 13,
+            }}
+            onFocus={(e) => (e.target.style.borderColor = 'var(--accent-dim)')}
+            onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
+          />
+        </div>
+      </div>
 
-        // Last message preview
-        let preview = '';
-        if (conversation.last_message) {
-          const lm = conversation.last_message;
-          if (lm.deleted_at) {
-            preview = 'Message deleted';
-          } else if (lm.type !== 'text') {
-            const icons: Record<string, string> = { image: '📷', video: '🎥', audio: '🎤', file: '📎' };
-            preview = `${lm.sender_display_name}: ${icons[lm.type] ?? '📎'} ${lm.type}`;
-          } else {
-            const text = decodeMessageText(lm.ciphertext);
-            preview = `${lm.sender_display_name}: ${text}`;
-          }
-        }
-
-        return (
-          <li key={conversation.id}>
-            <button
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors ${
-                isActive
-                  ? 'bg-indigo-600 text-white'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white dark:text-slate-300 dark:hover:bg-slate-800'
-              }`}
-              onClick={() => onSelect(conversation.id)}
-            >
-              {/* Avatar with presence dot */}
-              <span
-                className={`relative flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold ${
-                  isActive ? 'bg-indigo-400 text-white' : 'bg-slate-700 text-slate-200'
-                }`}
-              >
-                {title.slice(0, 1).toUpperCase()}
-                {other && (
-                  <span
-                    className={`absolute -right-0.5 -bottom-0.5 w-3 h-3 rounded-full border-2 ${
-                      isActive ? 'border-indigo-600' : 'border-slate-900'
-                    } ${isOnline ? 'bg-emerald-500' : 'bg-slate-600'}`}
-                  />
-                )}
-              </span>
-
-              {/* Name + preview */}
-              <span className="flex flex-col min-w-0 flex-1">
-                <span className="flex items-center gap-1">
-                  <span className="text-sm font-semibold truncate leading-tight flex-1">{title}</span>
-                  {conversation.is_muted && <span className="text-xs opacity-50">🔇</span>}
-                  {unread > 0 && (
-                    <span className={`text-xs font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center leading-none ${
-                      isActive ? 'bg-white text-indigo-600' : 'bg-indigo-500 text-white'
-                    }`}>
-                      {unread > 99 ? '99+' : unread}
-                    </span>
-                  )}
-                </span>
-                <span className={`text-xs truncate ${isActive ? 'text-indigo-200' : 'text-slate-500'}`}>
-                  {preview || (conversation.type === 'group' ? 'Group' : conversation.type === 'channel' ? 'Channel' : 'Direct')}
-                </span>
-              </span>
-            </button>
+      {/* Conversation rows — mirrors TeamWorkspace team rows exactly */}
+      <ul className="flex-1 overflow-y-auto px-2 pb-3 space-y-0.5">
+        {filtered.length === 0 && (
+          <li className="text-center py-8 text-[13px]" style={{ color: 'var(--text-dim)' }}>
+            {search ? 'No conversations found' : 'No conversations yet.'}
           </li>
-        );
-      })}
-    </ul>
+        )}
+        {filtered.map((conversation) => {
+          const title = getConversationTitle(conversation, currentUserId);
+          const other = conversation.type === 'direct' ? getOtherMember(conversation, currentUserId) : null;
+          const isOnline = other ? presence[other.user_id] === 'online' : false;
+          const isActive = conversation.id === selectedId;
+          const unread = conversation.unread_count ?? 0;
+
+          // Last message preview
+          let preview = '';
+          if (conversation.last_message) {
+            const lm = conversation.last_message;
+            if (lm.deleted_at) {
+              preview = 'Message deleted';
+            } else if (lm.type !== 'text') {
+              const icons: Record<string, string> = { image: '📷', video: '🎥', audio: '🎤', file: '📎' };
+              preview = `${lm.sender_display_name}: ${icons[lm.type] ?? '📎'}`;
+            } else {
+              preview = `${lm.sender_display_name}: ${decodeMessageText(lm.ciphertext)}`;
+            }
+          }
+
+          const subtitleText = other
+            ? isOnline ? '● Online' : '○ Offline'
+            : preview || (conversation.type === 'group' ? 'Group' : 'Channel');
+
+          return (
+            <li key={conversation.id}>
+              <button
+                onClick={() => onSelect(conversation.id)}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors"
+                style={{
+                  background: isActive ? 'var(--accent-wash)' : 'transparent',
+                }}
+              >
+                {/* Square avatar — matches team-icon */}
+                <div
+                  className="flex-shrink-0 flex items-center justify-center font-mono font-bold text-[13px] relative"
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 8,
+                    border: `1px solid ${isActive ? 'var(--accent-dim)' : 'var(--border)'}`,
+                    background: isActive ? 'var(--accent-dim)' : 'var(--panel)',
+                    color: isActive ? '#fff' : 'var(--accent)',
+                  }}
+                >
+                  {title.slice(0, 1).toUpperCase()}
+                  {/* Presence dot for direct messages */}
+                  {other && (
+                    <span
+                      className="absolute -right-0.5 -bottom-0.5 w-2.5 h-2.5 rounded-full"
+                      style={{
+                        background: isOnline ? '#22c55e' : 'var(--text-dim)',
+                        border: '1.5px solid var(--bg)',
+                      }}
+                    />
+                  )}
+                </div>
+
+                {/* Name + subtitle */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-[14px] font-medium truncate" style={{ color: isActive ? 'var(--text)' : 'var(--text-muted)' }}>
+                    {title}
+                  </p>
+                  <p
+                    className="text-[12px] truncate font-mono"
+                    style={{
+                      color: other
+                        ? isOnline ? 'var(--accent)' : 'var(--text-dim)'
+                        : 'var(--text-dim)',
+                    }}
+                  >
+                    {preview
+                      ? preview
+                      : subtitleText}
+                  </p>
+                </div>
+
+                {/* Unread badge */}
+                {unread > 0 && !isActive && (
+                  <span
+                    className="text-[11px] font-bold rounded-full flex-shrink-0"
+                    style={{ background: 'var(--danger)', color: '#fff', minWidth: 18, textAlign: 'center', padding: '2px 5px' }}
+                  >
+                    {unread > 99 ? '99+' : unread}
+                  </span>
+                )}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
