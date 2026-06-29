@@ -301,10 +301,42 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
 
   function stopRecording() { mediaRecorderRef.current?.stop(); mediaRecorderRef.current = null; setIsRecording(false); }
 
-  async function toggleReaction(messageId: string, emoji: string) {
+  function toggleReaction(messageId: string, emoji: string) {
     const msg = messages.find((m) => m.id === messageId);
     const existing = (msg?.reactions ?? []).find((r) => r.userId === user!.id && r.emoji === emoji);
-    if (existing) { await messagesApi.removeReaction(messageId, emoji); } else { await messagesApi.addReaction(messageId, emoji); }
+    if (existing) {
+      // Optimistic remove — don't wait for socket echo
+      setMessages((prev) => prev.map((m) =>
+        m.id !== messageId ? m : {
+          ...m,
+          reactions: (m.reactions ?? []).filter((r) => !(r.userId === user!.id && r.emoji === emoji)),
+        }
+      ));
+      messagesApi.removeReaction(messageId, emoji).catch(() => {
+        // Revert on failure
+        setMessages((prev) => prev.map((m) =>
+          m.id !== messageId ? m : { ...m, reactions: [...(m.reactions ?? []), existing] }
+        ));
+      });
+    } else {
+      // Optimistic add
+      const optimistic = { emoji, userId: user!.id, username: user!.username, displayName: user!.displayName };
+      setMessages((prev) => prev.map((m) =>
+        m.id !== messageId ? m : {
+          ...m,
+          reactions: [...(m.reactions ?? []).filter((r) => !(r.userId === user!.id && r.emoji === emoji)), optimistic],
+        }
+      ));
+      messagesApi.addReaction(messageId, emoji).catch(() => {
+        // Revert on failure
+        setMessages((prev) => prev.map((m) =>
+          m.id !== messageId ? m : {
+            ...m,
+            reactions: (m.reactions ?? []).filter((r) => !(r.userId === user!.id && r.emoji === emoji)),
+          }
+        ));
+      });
+    }
   }
 
   async function handleSearch(e: FormEvent) {
@@ -1030,15 +1062,17 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
 
                 {/* Reactions inside column */}
                 {!message.deletedAt && (message.reactions ?? []).length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1">
+                  <div className="flex flex-wrap gap-1 mt-2">
                     {Object.entries((message.reactions ?? []).reduce<Record<string, { count: number; mine: boolean }>>((acc, r) => {
                       acc[r.emoji] = { count: (acc[r.emoji]?.count ?? 0) + 1, mine: acc[r.emoji]?.mine || r.userId === user!.id };
                       return acc;
                     }, {})).map(([emoji, { count, mine: iMine }]) => (
                       <button key={emoji} onClick={() => toggleReaction(message.id, emoji)}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-colors"
-                        style={iMine ? { background: 'var(--accent-wash)', borderColor: 'var(--accent-dim)', color: 'var(--accent)' } : { background: 'var(--panel)', borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
-                        {emoji} <span className="font-medium">{count}</span>
+                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[12px] border transition-all"
+                        style={iMine
+                          ? { background: 'var(--accent)', borderColor: 'var(--accent)', color: '#fff' }
+                          : { background: 'var(--panel)', borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
+                        {emoji} <span className={iMine ? 'font-bold' : 'font-medium'}>{count}</span>
                       </button>
                     ))}
                   </div>
@@ -1047,7 +1081,7 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
 
               {/* Hover toolbar — sibling to the column */}
               {!isEditing && !message.deletedAt && (
-                <div className={`flex-shrink-0 transition-all duration-150 ${(msgDirs[message.id] ?? 'up') === 'up' ? 'self-end mb-0.5' : 'self-start mt-0.5'} ${openMenuId === message.id ? 'opacity-100 pointer-events-auto' : 'opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto'}`}>
+                <div className={`flex-shrink-0 transition-all duration-150 ${(msgDirs[message.id] ?? 'up') === 'up' ? 'self-end mb-0.5' : 'self-start mt-0.5'} ${openMenuId === message.id ? 'opacity-100 pointer-events-auto' : openMenuId !== null ? 'opacity-0 pointer-events-none' : 'opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto'}`}>
                   <div className="flex items-center rounded-2xl overflow-visible" style={{ background: 'var(--panel)', border: '1px solid var(--border)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
                     {QUICK_EMOJIS.map((e) => (
                       <button key={e} onClick={() => toggleReaction(message.id, e)} className="w-8 h-8 text-[16px] flex items-center justify-center transition-colors first:rounded-l-2xl hover-panel-alt">{e}</button>
