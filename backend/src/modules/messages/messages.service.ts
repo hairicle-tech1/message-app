@@ -1,5 +1,19 @@
 import { db } from '../../config/db.js';
 import { HttpError } from '../../middleware/error.middleware.js';
+
+// Runtime migrations — safe to re-run
+void db.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS forwarded_from_message_id UUID REFERENCES messages(id) ON DELETE SET NULL`).catch(() => {});
+void db.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS original_sender_id UUID REFERENCES users(id) ON DELETE SET NULL`).catch(() => {});
+void db.query(`
+  CREATE TABLE IF NOT EXISTS user_bookmarks (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    message_id      UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (user_id, message_id)
+  )
+`).catch(() => {});
 import { assertMember } from '../conversations/conversations.service.js';
 import * as filesService from '../files/files.service.js';
 import type { FileMeta } from '../files/files.service.js';
@@ -17,9 +31,8 @@ interface SendMessageInput {
 }
 
 export async function sendMessage(senderId: string, input: SendMessageInput) {
-  // Check membership and enforce channel broadcast restriction in one query
-  const memberCheck = await db.query<{ role: string; conv_type: string }>(
-    `SELECT cm.role, c.type AS conv_type
+  const memberCheck = await db.query<{ role: string; conv_type: string; team_id: string | null }>(
+    `SELECT cm.role, c.type AS conv_type, c.team_id
      FROM conversation_members cm
      JOIN conversations c ON c.id = cm.conversation_id
      WHERE cm.conversation_id = $1 AND cm.user_id = $2`,
@@ -27,8 +40,12 @@ export async function sendMessage(senderId: string, input: SendMessageInput) {
   );
   const memberRow = memberCheck.rows[0];
   if (!memberRow) throw new HttpError(403, 'Not a member of this conversation');
-  if (memberRow.conv_type === 'channel' && memberRow.role === 'subscriber') {
-    throw new HttpError(403, 'Only channel owners and admins can post');
+
+  // Announce channels (no team_id): only owners/admins can broadcast.
+  // Team workspace channels (has team_id): every team member can post — no role restriction.
+  const isAnnounceChannel = memberRow.conv_type === 'channel' && !memberRow.team_id;
+  if (isAnnounceChannel && memberRow.role === 'subscriber') {
+    throw new HttpError(403, 'Only channel owners and admins can post in announcement channels');
   }
 
   const ciphertext = input.ciphertext ?? '';
@@ -124,8 +141,9 @@ export async function getMessages(conversationId: string, userId: string, option
   params.push(limit);
 
   const result = await db.query(
-    `SELECT m.id, m.conversation_id, m.sender_id, m.type, m.ciphertext, m.reply_to_message_id, m.created_at, m.edited_at, m.deleted_at,
+    `SELECT m.id, m.conversation_id, m.sender_id, m.type, m.ciphertext, m.reply_to_message_id, m.forwarded_from_message_id, m.original_sender_id, m.created_at, m.edited_at, m.deleted_at,
             f.id AS file_id, f.file_name, f.mime_type, f.size_bytes, f.has_thumbnail, f.duration_secs AS file_duration_secs, f.created_at AS file_created_at,
+            ou.display_name AS original_sender_display_name,
             COALESCE(
               (SELECT json_agg(json_build_object(
                  'emoji', mr.emoji,
@@ -147,6 +165,7 @@ export async function getMessages(conversationId: string, userId: string, option
             END AS link_preview
      FROM messages m
      LEFT JOIN files f ON f.message_id = m.id
+     LEFT JOIN users ou ON ou.id = m.original_sender_id
      WHERE ${whereClause}
      ORDER BY m.created_at DESC
      LIMIT $${params.length}`,
@@ -160,6 +179,8 @@ export async function getMessages(conversationId: string, userId: string, option
     type: row.type,
     ciphertext: row.deleted_at ? '' : Buffer.from(row.ciphertext).toString('base64'),
     replyToMessageId: row.reply_to_message_id,
+    forwardedFromMessageId: (row as any).forwarded_from_message_id ?? null,
+    forwardedFromDisplayName: (row as any).original_sender_id ? ((row as any).original_sender_display_name ?? 'Unknown') : null,
     createdAt: row.created_at,
     editedAt: row.edited_at,
     deletedAt: row.deleted_at,
@@ -213,15 +234,21 @@ export async function editMessage(messageId: string, userId: string, ciphertext:
 }
 
 export async function deleteMessage(messageId: string, userId: string) {
-  const result = await db.query<{ conversation_id: string; sender_id: string }>(
-    'SELECT conversation_id, sender_id FROM messages WHERE id = $1',
-    [messageId],
+  const result = await db.query<{ conversation_id: string; sender_id: string; requester_role: string }>(
+    `SELECT m.conversation_id, m.sender_id, u.role AS requester_role
+     FROM messages m
+     JOIN users u ON u.id = $2
+     WHERE m.id = $1`,
+    [messageId, userId],
   );
   const message = result.rows[0];
   if (!message) {
     throw new HttpError(404, 'Message not found');
   }
-  if (message.sender_id !== userId) {
+  // Allow: the original sender, or any user with admin role
+  const isSender = message.sender_id === userId;
+  const isAdmin = message.requester_role === 'admin';
+  if (!isSender && !isAdmin) {
     throw new HttpError(403, 'Not authorized to delete this message');
   }
 
@@ -526,4 +553,176 @@ export async function getUndeliveredMessages(userId: string, deviceId: string) {
     editedAt: row.edited_at,
     deletedAt: row.deleted_at,
   }));
+}
+
+// ── Pin / Unpin ───────────────────────────────────────────────────────────────
+
+export async function pinMessage(messageId: string, userId: string) {
+  const { conversationId } = await getMessageConversation(messageId);
+  await assertMember(conversationId, userId);
+  await db.query(
+    `INSERT INTO pinned_messages (conversation_id, message_id, pinned_by)
+     VALUES ($1, $2, $3) ON CONFLICT (conversation_id, message_id) DO NOTHING`,
+    [conversationId, messageId, userId],
+  );
+  return { conversationId, messageId };
+}
+
+export async function unpinMessage(messageId: string, userId: string) {
+  const { conversationId } = await getMessageConversation(messageId);
+  await assertMember(conversationId, userId);
+  await db.query(
+    'DELETE FROM pinned_messages WHERE conversation_id = $1 AND message_id = $2',
+    [conversationId, messageId],
+  );
+  return { conversationId, messageId };
+}
+
+export async function getPinnedMessages(conversationId: string, userId: string) {
+  await assertMember(conversationId, userId);
+  const result = await db.query<{
+    message_id: string; ciphertext: Buffer; type: string;
+    sender_display_name: string | null; pinned_at: string; pinned_by_name: string | null;
+  }>(
+    `SELECT pm.message_id, m.ciphertext, m.type,
+            u.display_name AS sender_display_name,
+            pm.pinned_at,
+            pb.display_name AS pinned_by_name
+     FROM pinned_messages pm
+     JOIN messages m ON m.id = pm.message_id
+     LEFT JOIN users u ON u.id = m.sender_id
+     LEFT JOIN users pb ON pb.id = pm.pinned_by
+     WHERE pm.conversation_id = $1
+     ORDER BY pm.pinned_at DESC
+     LIMIT 20`,
+    [conversationId],
+  );
+  return result.rows.map((r) => ({
+    messageId: r.message_id,
+    type: r.type,
+    ciphertext: Buffer.from(r.ciphertext).toString('base64'),
+    senderDisplayName: r.sender_display_name ?? 'Unknown',
+    pinnedAt: r.pinned_at,
+    pinnedByName: r.pinned_by_name ?? 'Unknown',
+  }));
+}
+
+// ── Personal bookmarks ────────────────────────────────────────────────────────
+
+export async function bookmarkMessage(messageId: string, userId: string) {
+  const { conversationId } = await getMessageConversation(messageId);
+  await assertMember(conversationId, userId);
+  await db.query(
+    `INSERT INTO user_bookmarks (user_id, message_id, conversation_id)
+     VALUES ($1, $2, $3) ON CONFLICT (user_id, message_id) DO NOTHING`,
+    [userId, messageId, conversationId],
+  );
+  return { messageId };
+}
+
+export async function unbookmarkMessage(messageId: string, userId: string) {
+  await db.query('DELETE FROM user_bookmarks WHERE user_id = $1 AND message_id = $2', [userId, messageId]);
+  return { messageId };
+}
+
+export async function getUserBookmarks(userId: string, conversationId: string) {
+  await assertMember(conversationId, userId);
+  const result = await db.query<{
+    message_id: string; ciphertext: Buffer; type: string;
+    sender_display_name: string | null; created_at: string;
+  }>(
+    `SELECT ub.message_id, m.ciphertext, m.type,
+            u.display_name AS sender_display_name, ub.created_at
+     FROM user_bookmarks ub
+     JOIN messages m ON m.id = ub.message_id
+     LEFT JOIN users u ON u.id = m.sender_id
+     WHERE ub.user_id = $1 AND ub.conversation_id = $2 AND m.deleted_at IS NULL
+     ORDER BY ub.created_at DESC
+     LIMIT 50`,
+    [userId, conversationId],
+  );
+  return result.rows.map((r) => ({
+    messageId: r.message_id,
+    type: r.type,
+    ciphertext: Buffer.from(r.ciphertext).toString('base64'),
+    senderDisplayName: r.sender_display_name ?? 'Unknown',
+    savedAt: r.created_at,
+  }));
+}
+
+// ── Forward ───────────────────────────────────────────────────────────────────
+
+export async function forwardMessage(messageId: string, senderId: string, targetConversationId: string) {
+  await assertMember(targetConversationId, senderId);
+
+  // Fetch source message + its original_sender_id (for chain preservation) + sender fallback
+  const src = await db.query<{
+    ciphertext: Buffer; type: string; file_id: string | null;
+    sender_id: string | null; original_sender_id: string | null;
+    original_sender_display_name: string | null; sender_display_name: string | null;
+  }>(
+    `SELECT m.ciphertext, m.type, f.id AS file_id,
+            m.sender_id, m.original_sender_id,
+            ou.display_name AS original_sender_display_name,
+            su.display_name AS sender_display_name
+     FROM messages m
+     LEFT JOIN files f ON f.message_id = m.id
+     LEFT JOIN users ou ON ou.id = m.original_sender_id
+     LEFT JOIN users su ON su.id = m.sender_id
+     WHERE m.id = $1 AND m.deleted_at IS NULL`,
+    [messageId],
+  );
+  const original = src.rows[0];
+  if (!original) throw new HttpError(404, 'Original message not found or deleted');
+
+  // Preserve original attribution through chains:
+  // If the source is already a forward, its original_sender_id is the true origin.
+  // Otherwise, the source's own sender is the origin.
+  const originalSenderId = original.original_sender_id ?? original.sender_id;
+  const originalSenderName = original.original_sender_id
+    ? (original.original_sender_display_name ?? 'Unknown')
+    : (original.sender_display_name ?? 'Unknown');
+
+  const ciphertext = original.ciphertext.toString('base64');
+
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+
+    const msgResult = await client.query<{ id: string; created_at: string }>(
+      `INSERT INTO messages (conversation_id, sender_id, type, ciphertext, forwarded_from_message_id, original_sender_id)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, created_at`,
+      [targetConversationId, senderId, original.type, original.ciphertext, messageId, originalSenderId],
+    );
+    const newMsg = msgResult.rows[0];
+
+    if (original.file_id) {
+      await client.query(
+        `INSERT INTO files (id, storage_key, file_name, mime_type, size_bytes, has_thumbnail, uploader_id, message_id, duration_secs)
+         SELECT uuid_generate_v4(), storage_key, file_name, mime_type, size_bytes, has_thumbnail, $1, $2, duration_secs
+         FROM files WHERE id = $3`,
+        [senderId, newMsg.id, original.file_id],
+      );
+    }
+
+    await client.query('UPDATE conversations SET updated_at = now() WHERE id = $1', [targetConversationId]);
+    await client.query('COMMIT');
+
+    return {
+      id: newMsg.id,
+      conversationId: targetConversationId,
+      senderId,
+      type: original.type as MessageType,
+      ciphertext,
+      replyToMessageId: null,
+      forwardedFromMessageId: messageId,
+      forwardedFromDisplayName: originalSenderName,
+      createdAt: newMsg.created_at,
+    };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }

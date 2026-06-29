@@ -22,7 +22,6 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
   const { user, updateUser } = useAuth();
   const [tab, setTab] = useState<Tab>('profile');
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [avatarKey, setAvatarKey] = useState(Date.now());
 
   const [displayName, setDisplayName] = useState(user?.displayName ?? '');
   const [department, setDepartment] = useState('');
@@ -30,6 +29,10 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [loadError, setLoadError] = useState('');
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState('');
+  // Direct avatar URL state — set once we know there's a real photo to show
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const [currentPw, setCurrentPw] = useState('');
@@ -52,6 +55,9 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
         setDisplayName(profile.displayName);
         setDepartment(profile.department ?? '');
         setLoadError('');
+        if (profile.avatarUrl) {
+          setAvatarUrl(`${profileApi.getAvatarUrl(profile.id)}?v=${Date.now()}`);
+        }
       })
       .catch((err: Error) => setLoadError(err.message));
     profileApi.getNotificationPrefs().then(({ prefs }) => setPrefs(prefs)).catch(() => {});
@@ -77,14 +83,25 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
+    setAvatarUploading(true);
+    setAvatarError('');
+    // Show local preview immediately — no server round-trip needed for display
+    const localPreview = URL.createObjectURL(file);
+    setAvatarUrl(localPreview);
     try {
       const { profile: updated } = await profileApi.uploadAvatar(file);
-      const v = Date.now();
-      setProfile(updated); setAvatarKey(v);
-      updateUser({ avatarUrl: `${profileApi.getAvatarUrl(updated.id)}?v=${v}` });
-      setSaveMsg('Avatar updated!');
-      setTimeout(() => setSaveMsg(''), 3000);
-    } catch (err) { setSaveMsg((err as Error).message); }
+      const serverSrc = `${profileApi.getAvatarUrl(updated.id)}?v=${Date.now()}`;
+      setProfile(updated);
+      setAvatarUrl(serverSrc);
+      updateUser({ avatarUrl: serverSrc });
+    } catch (err) {
+      console.error('Avatar upload failed:', err);
+      setAvatarUrl(null); // revert preview on error
+      setAvatarError((err as Error).message || 'Upload failed');
+    } finally {
+      setAvatarUploading(false);
+      URL.revokeObjectURL(localPreview);
+    }
   }
 
   async function handleChangePassword(e: { preventDefault(): void }) {
@@ -137,9 +154,7 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
     finally { setTimeout(() => setPrefsMsg(''), 2000); }
   }
 
-  const hasAvatar = Boolean(profile?.avatarUrl ?? user?.avatarUrl);
-  const userId = profile?.id ?? user?.id;
-  const avatarSrc = userId ? `${profileApi.getAvatarUrl(userId)}?v=${avatarKey}` : null;
+  // avatarUrl state is set on load and after upload — single source of truth for display
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'profile', label: 'Profile' },
@@ -167,34 +182,55 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
             </svg>
           </button>
 
-          {/* Avatar row */}
+          {/* Avatar — full clickable zone */}
           <div className="flex items-center gap-4">
-            <div className="relative flex-shrink-0">
-              {hasAvatar && avatarSrc ? (
-                <img key={avatarKey} src={avatarSrc}
-                  className="object-cover"
-                  style={{ width: 56, height: 56, borderRadius: 10, border: '2px solid var(--border)' }}
-                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }} />
+            {/* Avatar with transparent file input overlay — no JS .click() needed */}
+            <div
+              className="group relative flex-shrink-0 overflow-hidden"
+              style={{ width: 64, height: 64, borderRadius: 12, border: '2px solid var(--border)' }}
+            >
+              {avatarUrl ? (
+                <img src={avatarUrl} className="w-full h-full object-cover"
+                  onError={(e) => { console.error('Avatar img failed to load:', avatarUrl); (e.currentTarget as HTMLImageElement).style.opacity = '0.3'; }} />
               ) : (
-                <div style={{
-                  width: 56, height: 56, borderRadius: 10,
-                  background: avatarColor(user?.username ?? 'u'),
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#fff', fontSize: 22, fontWeight: 700, fontFamily: 'monospace',
-                  border: '2px solid var(--border)',
-                }}>
+                <div style={{ width: '100%', height: '100%', background: avatarColor(user?.username ?? 'u'), display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 24, fontWeight: 700, fontFamily: 'monospace' }}>
                   {(profile?.displayName ?? user?.displayName ?? '?').slice(0, 1).toUpperCase()}
                 </div>
               )}
-              <button onClick={() => avatarInputRef.current?.click()}
-                className="absolute -bottom-1 -right-1 w-6 h-6 flex items-center justify-center rounded-lg transition-colors"
-                style={{ background: 'var(--accent)', border: '2px solid var(--panel-alt)' }}>
-                <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </button>
-              <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+              {/* Hover overlay (pointer-events: none so input below receives clicks) */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: 'rgba(0,0,0,0.6)', pointerEvents: 'none' }}>
+                {avatarUploading ? (
+                  <svg className="w-5 h-5 text-white animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                  </svg>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5 text-white mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span className="text-white text-[9px] font-mono">Change</span>
+                  </>
+                )}
+              </div>
+              {/* Transparent file input sits on top — user clicks it directly */}
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                disabled={avatarUploading}
+                onChange={handleAvatarChange}
+                title="Click to change photo"
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  width: '100%',
+                  height: '100%',
+                  opacity: 0,
+                  cursor: avatarUploading ? 'wait' : 'pointer',
+                }}
+              />
             </div>
 
             <div className="flex-1 min-w-0">
@@ -217,6 +253,19 @@ export function ProfilePanel({ onClose }: ProfilePanelProps) {
               )}
             </div>
           </div>
+
+          {/* Avatar upload status */}
+          {avatarUploading && (
+            <p className="mt-2 text-[11px] font-mono" style={{ color: 'var(--text-dim)' }}>Uploading photo…</p>
+          )}
+          {avatarError && (
+            <p className="mt-2 text-[11px] font-mono" style={{ color: 'var(--danger)' }}>Upload failed: {avatarError}</p>
+          )}
+          {!avatarUploading && !avatarError && (
+            <span className="mt-2 font-mono text-[11px]" style={{ color: 'var(--accent)' }}>
+              Click photo to change
+            </span>
+          )}
         </div>
 
         {/* ── Tabs ── */}

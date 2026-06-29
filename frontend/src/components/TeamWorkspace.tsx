@@ -85,6 +85,10 @@ export function TeamWorkspace() {
   const generalConvIdRef = useRef<string | null>(null);
   useEffect(() => { generalConvIdRef.current = generalConvId; }, [generalConvId]);
 
+  // Always-current roster ref so socket handler never has stale member list
+  const membersRef = useRef<TeamMember[]>([]);
+  useEffect(() => { membersRef.current = members; }, [members]);
+
   // Load team list
   useEffect(() => {
     apiFetch<{ teams: TeamSummary[] }>('/api/teams')
@@ -127,11 +131,14 @@ export function TeamWorkspace() {
     if (!socket) return;
     const handler = (msg: Message) => {
       if (msg.conversationId !== generalConvIdRef.current) return;
-      // Convert from Message shape to TeamMessage shape
+      // Resolve display name from the always-current membersRef — never stale, never "Unknown"
+      const member = membersRef.current.find((m) => m.userId === msg.senderId);
+      const displayName = member?.displayName
+        ?? (msg.senderId === user?.id ? (user.displayName ?? 'Me') : 'Unknown');
       const teamMsg: TeamMessage = {
         id: msg.id,
         userId: msg.senderId,
-        displayName: (msg as unknown as { senderDisplayName?: string }).senderDisplayName ?? 'Unknown',
+        displayName,
         content: msg.ciphertext,
         createdAt: msg.createdAt,
       };

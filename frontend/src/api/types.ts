@@ -122,6 +122,23 @@ export interface ConversationAttachmentItem {
   file: FileMeta;
 }
 
+export interface PinnedMessage {
+  messageId: string;
+  type: string;
+  ciphertext: string;
+  senderDisplayName: string;
+  pinnedAt: string;
+  pinnedByName: string;
+}
+
+export interface BookmarkedMessage {
+  messageId: string;
+  type: string;
+  ciphertext: string;
+  senderDisplayName: string;
+  savedAt: string;
+}
+
 export interface Message {
   id: string;
   conversationId: string;
@@ -129,6 +146,8 @@ export interface Message {
   type: MessageType;
   ciphertext: string;
   replyToMessageId: string | null;
+  forwardedFromMessageId?: string | null;
+  forwardedFromDisplayName?: string | null;
   createdAt: string;
   editedAt?: string | null;
   deletedAt?: string | null;

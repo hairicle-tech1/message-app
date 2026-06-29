@@ -153,7 +153,9 @@ CREATE TABLE messages (
     sender_id            UUID REFERENCES users(id) ON DELETE SET NULL,
     type                 message_type NOT NULL DEFAULT 'text',
     ciphertext           BYTEA NOT NULL,
-    reply_to_message_id  UUID REFERENCES messages(id),
+    reply_to_message_id         UUID REFERENCES messages(id),
+    forwarded_from_message_id   UUID REFERENCES messages(id) ON DELETE SET NULL,
+    original_sender_id          UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
     edited_at            TIMESTAMPTZ,
     deleted_at           TIMESTAMPTZ
@@ -198,6 +200,17 @@ CREATE TABLE pinned_messages (
 );
 
 CREATE INDEX idx_pinned_messages_conversation_id ON pinned_messages(conversation_id, pinned_at DESC);
+
+-- Personal bookmarks (only visible to the bookmarking user)
+CREATE TABLE user_bookmarks (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    message_id      UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (user_id, message_id)
+);
+CREATE INDEX idx_user_bookmarks_user_id ON user_bookmarks(user_id, created_at DESC);
 
 -- Message reactions
 

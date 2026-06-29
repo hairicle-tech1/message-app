@@ -76,6 +76,44 @@ export async function deleteMessageHandler(req: Request, res: Response) {
   res.json({ message: result });
 }
 
+export async function pinMessageHandler(req: Request, res: Response) {
+  const result = await messagesService.pinMessage(req.params.id, req.user!.id);
+  res.json(result);
+}
+
+export async function unpinMessageHandler(req: Request, res: Response) {
+  const result = await messagesService.unpinMessage(req.params.id, req.user!.id);
+  res.json(result);
+}
+
+export async function getPinnedHandler(req: Request, res: Response) {
+  const conversationId = z.string().uuid().parse(req.query.conversationId);
+  const pinned = await messagesService.getPinnedMessages(conversationId, req.user!.id);
+  res.json({ pinned });
+}
+
+export async function bookmarkMessageHandler(req: Request, res: Response) {
+  const result = await messagesService.bookmarkMessage(req.params.id, req.user!.id);
+  res.json(result);
+}
+
+export async function unbookmarkMessageHandler(req: Request, res: Response) {
+  const result = await messagesService.unbookmarkMessage(req.params.id, req.user!.id);
+  res.json(result);
+}
+
+export async function getUserBookmarksHandler(req: Request, res: Response) {
+  const conversationId = z.string().uuid().parse(req.query.conversationId);
+  const bookmarks = await messagesService.getUserBookmarks(req.user!.id, conversationId);
+  res.json({ bookmarks });
+}
+
+export async function forwardMessageHandler(req: Request, res: Response) {
+  const { targetConversationId } = z.object({ targetConversationId: z.string().uuid() }).parse(req.body);
+  const message = await messagesService.forwardMessage(req.params.id, req.user!.id, targetConversationId);
+  res.status(201).json({ message });
+}
+
 export async function getReceiptsHandler(req: Request, res: Response) {
   const { receipts, memberCount } = await messagesService.getMessageReceipts(req.params.id, req.user!.id);
   res.json({ receipts, memberCount });

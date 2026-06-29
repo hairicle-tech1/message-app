@@ -3,12 +3,14 @@ import * as conversationsApi from '../api/conversations';
 import * as filesApi from '../api/files';
 import * as messagesApi from '../api/messages';
 import type {
+  BookmarkedMessage,
   Conversation,
   FileMeta,
   Message,
   MessageDeleteResult,
   MessageEditResult,
   MessageType,
+  PinnedMessage,
   Reaction,
 } from '../api/types';
 import { ConversationInfoPanel } from './ConversationInfoPanel';
@@ -53,6 +55,22 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
   const [editingText, setEditingText] = useState('');
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [pinnedMessages, setPinnedMessages] = useState<PinnedMessage[]>([]);
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set());
+  const [bookmarks, setBookmarks] = useState<BookmarkedMessage[]>([]);
+  const [bookmarkIds, setBookmarkIds] = useState<Set<string>>(new Set());
+  const [showPinnedBar, setShowPinnedBar] = useState(false);
+  const [pinnedBarTab, setPinnedBarTab] = useState<'pinned' | 'saved'>('pinned');
+  const [pinnedBarIndex, setPinnedBarIndex] = useState(0);
+  const [highlightedMsgId, setHighlightedMsgId] = useState<string | null>(null);
+  const msgRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
+  const [forwardSearch, setForwardSearch] = useState('');
+  const [forwardSelected, setForwardSelected] = useState<Set<string>>(new Set());
+  const [forwardComment, setForwardComment] = useState('');
+  const [forwardLoading, setForwardLoading] = useState(false);
+  const [allConversations, setAllConversations] = useState<Conversation[]>([]);
+  const [toast, setToast] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Message[] | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -62,6 +80,9 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const QUICK_EMOJIS = ['👍', '❤️', '😂', '😢', '🔥'];
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // Per-message toolbar direction computed fresh on each hover/click
+  const [msgDirs, setMsgDirs] = useState<Record<string, 'up' | 'down'>>({});
   const typingTimeoutRef = useRef<number | null>(null);
   const markedReadRef = useRef<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -83,6 +104,20 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
     messagesApi.listMessages(conversationId).then(({ messages }) => {
       if (!cancelled) setMessages([...messages].reverse());
     });
+
+    messagesApi.getPinnedMessages(conversationId).then(({ pinned }) => {
+      if (!cancelled) {
+        setPinnedMessages(pinned);
+        setPinnedIds(new Set(pinned.map((p) => p.messageId)));
+      }
+    }).catch(() => {});
+
+    messagesApi.getUserBookmarks(conversationId).then(({ bookmarks: bk }) => {
+      if (!cancelled) {
+        setBookmarks(bk);
+        setBookmarkIds(new Set(bk.map((b) => b.messageId)));
+      }
+    }).catch(() => {});
 
     return () => { cancelled = true; };
   }, [conversationId]);
@@ -314,6 +349,109 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
     if (localStreamRef.current) { localStreamRef.current.getTracks().forEach((t) => t.stop()); localStreamRef.current = null; }
   }
 
+  async function handlePin(message: Message) {
+    const isPinned = pinnedIds.has(message.id);
+    try {
+      if (isPinned) {
+        await messagesApi.unpinMessage(message.id);
+        setPinnedIds((prev) => { const s = new Set(prev); s.delete(message.id); return s; });
+        setPinnedMessages((prev) => prev.filter((p) => p.messageId !== message.id));
+      } else {
+        await messagesApi.pinMessage(message.id);
+        const text = decodeMessageText(message.ciphertext);
+        const sender = conversation?.members?.find((m) => m.user_id === message.senderId);
+        const newPin: PinnedMessage = {
+          messageId: message.id,
+          type: message.type,
+          ciphertext: message.ciphertext,
+          senderDisplayName: sender?.display_name ?? 'Unknown',
+          pinnedAt: new Date().toISOString(),
+          pinnedByName: user!.displayName,
+        };
+        setPinnedIds((prev) => new Set([...prev, message.id]));
+        setPinnedMessages((prev) => [newPin, ...prev]);
+      }
+    } catch (err) { window.alert((err as Error).message); }
+  }
+
+  async function handleBookmark(message: Message) {
+    const isSaved = bookmarkIds.has(message.id);
+    try {
+      if (isSaved) {
+        await messagesApi.unbookmarkMessage(message.id);
+        setBookmarkIds((prev) => { const s = new Set(prev); s.delete(message.id); return s; });
+        setBookmarks((prev) => prev.filter((b) => b.messageId !== message.id));
+      } else {
+        await messagesApi.bookmarkMessage(message.id);
+        const sender = conversation?.members?.find((m) => m.user_id === message.senderId);
+        setBookmarkIds((prev) => new Set([...prev, message.id]));
+        setBookmarks((prev) => [{
+          messageId: message.id,
+          type: message.type,
+          ciphertext: message.ciphertext,
+          senderDisplayName: sender?.display_name ?? 'Unknown',
+          savedAt: new Date().toISOString(),
+        }, ...prev]);
+      }
+    } catch (err) { window.alert((err as Error).message); }
+  }
+
+  function showToast(msg: string) {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3500);
+  }
+
+  function openForwardPicker(message: Message) {
+    setForwardingMessage(message);
+    setForwardSearch('');
+    setForwardSelected(new Set());
+    setForwardComment('');
+    // Load conversations fresh when picker opens
+    conversationsApi.listConversations().then(({ conversations }) => {
+      setAllConversations(conversations.filter((c) => c.id !== conversationId));
+    }).catch(() => {});
+  }
+
+  async function handleForward() {
+    if (!forwardingMessage || forwardSelected.size === 0) return;
+    setForwardLoading(true);
+    const targets = allConversations.filter((c) => forwardSelected.has(c.id));
+    try {
+      await Promise.all(targets.map((c) => messagesApi.forwardMessage(forwardingMessage.id, c.id)));
+      // Send optional comment to each target
+      if (forwardComment.trim()) {
+        const ciphertext = encodeMessageText(forwardComment.trim());
+        await Promise.all(targets.map((c) =>
+          messagesApi.sendMessage({ conversationId: c.id, ciphertext })
+        ));
+      }
+      const names = targets.map((c) => getConversationTitle(c, user!.id)).join(', ');
+      showToast(`Forwarded to ${names}`);
+      setForwardingMessage(null);
+    } catch (err) { window.alert((err as Error).message); }
+    finally { setForwardLoading(false); }
+  }
+
+  function scrollToMessage(messageId: string) {
+    const el = msgRefs.current.get(messageId);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    setHighlightedMsgId(messageId);
+    setTimeout(() => setHighlightedMsgId(null), 1800);
+  }
+
+  // Compute toolbar open direction for a given element freshly each call
+  function calcToolbarDir(el: Element, msgId: string) {
+    const rect = el.getBoundingClientRect();
+    const containerRect = scrollContainerRef.current?.getBoundingClientRect();
+    const containerBottom = containerRect?.bottom ?? window.innerHeight;
+    const spaceBelow = containerBottom - rect.bottom - 68; // 68 ≈ composer bar height
+    const dir: 'up' | 'down' = spaceBelow >= 220 ? 'down' : 'up';
+    setMsgDirs((prev) => ({ ...prev, [msgId]: dir }));
+    return dir;
+  }
+
   if (!conversation) {
     return <div className="flex-1 flex items-center justify-center text-sm" style={{ color: 'var(--text-dim)' }}>Loading conversation...</div>;
   }
@@ -418,11 +556,295 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
         </div>
       )}
 
+      {/* ── Pinned / Saved bar (Telegram-style) ── */}
+      {(pinnedMessages.length > 0 || bookmarks.length > 0) && (() => {
+        // Combined list for cycling: pinned first, then bookmarks
+        const allPinned = pinnedMessages;
+        const safeIdx = Math.min(pinnedBarIndex, allPinned.length - 1);
+        const current = allPinned[safeIdx] ?? null;
+
+        function fmtSecs(s: number) {
+          return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+        }
+        function pinPreview(type: string, ciphertext: string, durationSecs?: number | null): React.ReactNode {
+          if (type === 'audio') {
+            return (
+              <span className="flex items-center gap-1">
+                <svg className="w-3 h-3 flex-shrink-0" style={{ color: 'var(--accent)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                </svg>
+                <span>{durationSecs != null ? fmtSecs(durationSecs) : 'Voice message'}</span>
+              </span>
+            );
+          }
+          if (type === 'image') return <span className="flex items-center gap-1"><svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--accent)' }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg><span>Photo</span></span>;
+          if (type === 'video') return <span className="flex items-center gap-1"><svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--accent)' }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg><span>Video</span></span>;
+          if (type === 'file') return <span className="flex items-center gap-1"><svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: 'var(--accent)' }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg><span>File</span></span>;
+          return <span className="truncate">{decodeMessageText(ciphertext)}</span>;
+        }
+
+        return (
+          <div className="flex-shrink-0" style={{ borderBottom: '1px solid var(--border)', background: 'var(--panel-alt)' }}>
+            {/* ── Collapsed single-line bar ── */}
+            <div className="flex items-center gap-0" style={{ height: 40 }}>
+              {/* Accent left stripe */}
+              <div className="flex-shrink-0 self-stretch w-0.5" style={{ background: 'var(--accent)', margin: '6px 0' }} />
+
+              {/* Preview — click to scroll */}
+              <button
+                type="button"
+                onClick={() => current && scrollToMessage(current.messageId)}
+                className="flex-1 flex flex-col justify-center min-w-0 px-3 text-left hover-panel-alt h-full"
+              >
+                <span className="text-[10.5px] font-semibold font-mono leading-tight" style={{ color: 'var(--accent)' }}>
+                  📌 {allPinned.length > 1 ? `Pinned message ${safeIdx + 1}/${allPinned.length}` : 'Pinned message'}
+                </span>
+                {current && (
+                  <span className="text-[12px] leading-tight truncate mt-0.5 flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
+                    <span className="font-semibold" style={{ color: 'var(--text-dim)' }}>{current.senderDisplayName}:</span>
+                    {pinPreview(current.type, current.ciphertext)}
+                  </span>
+                )}
+              </button>
+
+              {/* Cycle up/down — only when multiple pins */}
+              {allPinned.length > 1 && (
+                <div className="flex flex-col flex-shrink-0">
+                  <button type="button"
+                    onClick={(e) => { e.stopPropagation(); setPinnedBarIndex((i) => (i - 1 + allPinned.length) % allPinned.length); }}
+                    className="h-5 px-1.5 flex items-center hover-panel-alt" title="Previous pin">
+                    <svg className="w-3 h-3" style={{ color: 'var(--text-dim)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7" /></svg>
+                  </button>
+                  <button type="button"
+                    onClick={(e) => { e.stopPropagation(); setPinnedBarIndex((i) => (i + 1) % allPinned.length); }}
+                    className="h-5 px-1.5 flex items-center hover-panel-alt" title="Next pin">
+                    <svg className="w-3 h-3" style={{ color: 'var(--text-dim)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" /></svg>
+                  </button>
+                </div>
+              )}
+
+              {/* Expand toggle */}
+              <button type="button"
+                onClick={() => setShowPinnedBar((v) => !v)}
+                className="flex-shrink-0 h-full px-3 flex items-center hover-panel-alt" title={showPinnedBar ? 'Collapse' : 'Expand'}>
+                <svg className={`w-3.5 h-3.5 transition-transform ${showPinnedBar ? 'rotate-180' : ''}`} style={{ color: 'var(--text-dim)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+            </div>
+
+            {/* ── Expanded tabbed list ── */}
+            {showPinnedBar && (
+              <div style={{ borderTop: '1px solid var(--border)' }}>
+                {/* Tabs */}
+                <div className="flex px-4 gap-4" style={{ borderBottom: '1px solid var(--border)' }}>
+                  {pinnedMessages.length > 0 && (
+                    <button type="button" onClick={() => setPinnedBarTab('pinned')}
+                      className="py-2 text-[12px] font-mono border-b-2 transition-colors"
+                      style={{ borderColor: pinnedBarTab === 'pinned' ? 'var(--accent)' : 'transparent', color: pinnedBarTab === 'pinned' ? 'var(--accent)' : 'var(--text-dim)' }}>
+                      📌 Pinned for all
+                    </button>
+                  )}
+                  {bookmarks.length > 0 && (
+                    <button type="button" onClick={() => setPinnedBarTab('saved')}
+                      className="py-2 text-[12px] font-mono border-b-2 transition-colors"
+                      style={{ borderColor: pinnedBarTab === 'saved' ? 'var(--accent)' : 'transparent', color: pinnedBarTab === 'saved' ? 'var(--accent)' : 'var(--text-dim)' }}>
+                      🔖 Saved for me
+                    </button>
+                  )}
+                  <button type="button" onClick={() => setShowPinnedBar(false)} className="ml-auto py-2 flex items-center">
+                    <svg className="w-3.5 h-3.5" style={{ color: 'var(--text-dim)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+
+                {/* Pinned for all */}
+                {pinnedBarTab === 'pinned' && (
+                  <div className="py-1 max-h-44 overflow-y-auto">
+                    {pinnedMessages.map((p, idx) => (
+                      <div key={p.messageId}
+                        className="group flex items-center gap-2 px-4 py-2 transition-colors hover-panel-alt cursor-pointer"
+                        onClick={() => scrollToMessage(p.messageId)}>
+                        {/* Active indicator stripe */}
+                        <div className="flex-shrink-0 w-0.5 self-stretch rounded-full" style={{ background: idx === safeIdx ? 'var(--accent)' : 'transparent' }} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] font-semibold font-mono" style={{ color: 'var(--accent)' }}>
+                            {p.senderDisplayName}
+                            <span className="ml-1 font-normal" style={{ color: 'var(--text-dim)' }}>· {p.pinnedByName !== p.senderDisplayName ? `pinned by ${p.pinnedByName}` : 'pinned'}</span>
+                          </p>
+                          <p className="text-[12px] truncate mt-0.5 flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
+                            {pinPreview(p.type, p.ciphertext)}
+                          </p>
+                        </div>
+                        {/* Inline unpin — visible on row hover */}
+                        <button type="button" title="Unpin"
+                          onClick={(e) => { e.stopPropagation(); messagesApi.unpinMessage(p.messageId).then(() => { setPinnedIds((prev) => { const s = new Set(prev); s.delete(p.messageId); return s; }); setPinnedMessages((prev) => prev.filter((x) => x.messageId !== p.messageId)); if (pinnedBarIndex >= pinnedMessages.length - 1) setPinnedBarIndex(0); }).catch(() => {}); }}
+                          className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover-panel-alt"
+                          style={{ color: 'var(--text-dim)' }}>
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Saved for me */}
+                {pinnedBarTab === 'saved' && (
+                  <div className="py-1 max-h-44 overflow-y-auto">
+                    {bookmarks.map((b) => (
+                      <div key={b.messageId}
+                        className="group flex items-center gap-2 px-4 py-2 transition-colors hover-panel-alt cursor-pointer"
+                        onClick={() => scrollToMessage(b.messageId)}>
+                        <div className="w-0.5 self-stretch flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] font-semibold font-mono" style={{ color: 'var(--accent)' }}>{b.senderDisplayName}</p>
+                          <p className="text-[12px] truncate mt-0.5 flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
+                            {pinPreview(b.type, b.ciphertext)}
+                          </p>
+                        </div>
+                        <button type="button" title="Remove bookmark"
+                          onClick={(e) => { e.stopPropagation(); messagesApi.unbookmarkMessage(b.messageId).then(() => { setBookmarkIds((prev) => { const s = new Set(prev); s.delete(b.messageId); return s; }); setBookmarks((prev) => prev.filter((x) => x.messageId !== b.messageId)); }).catch(() => {}); }}
+                          className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover-panel-alt"
+                          style={{ color: 'var(--text-dim)' }}>
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Backdrop to close dropdown */}
       {openMenuId && <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />}
 
+      {/* Forward picker modal */}
+      {/* ── Forward picker (Telegram-style) ── */}
+      {forwardingMessage && (() => {
+        const q = forwardSearch.toLowerCase();
+        const filtered = allConversations.filter((c) =>
+          getConversationTitle(c, user!.id).toLowerCase().includes(q)
+        );
+        return (
+          <div className="absolute inset-0 z-40 flex items-end sm:items-center justify-center" style={{ background: 'rgba(0,0,0,0.55)' }}
+            onClick={(e) => { if (e.target === e.currentTarget) { setForwardingMessage(null); } }}>
+            <div className="w-full max-w-sm rounded-t-2xl sm:rounded-2xl overflow-hidden shadow-2xl flex flex-col" style={{ background: 'var(--panel)', border: '1px solid var(--border)', maxHeight: '80vh' }}>
+
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4 flex-shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
+                <div>
+                  <p className="font-semibold text-[15px]" style={{ color: 'var(--text)' }}>Forward message</p>
+                  <p className="text-[11px] font-mono mt-0.5" style={{ color: 'var(--text-dim)' }}>
+                    {forwardSelected.size === 0 ? 'Choose who to forward to' : `${forwardSelected.size} selected`}
+                  </p>
+                </div>
+                <button type="button" onClick={() => setForwardingMessage(null)} className="btn-icon" style={{ width: 30, height: 30 }}>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+
+              {/* Search */}
+              <div className="px-4 py-3 flex-shrink-0" style={{ borderBottom: '1px solid var(--border)' }}>
+                <div className="relative">
+                  <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--text-dim)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <input
+                    autoFocus
+                    value={forwardSearch}
+                    onChange={(e) => setForwardSearch(e.target.value)}
+                    placeholder="Find a conversation…"
+                    className="w-full pl-8 pr-3 py-2 text-[13px] focus:outline-none"
+                    style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text)' }}
+                    onFocus={(e) => (e.target.style.borderColor = 'var(--accent-dim)')}
+                    onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
+                  />
+                </div>
+              </div>
+
+              {/* Conversation list */}
+              <div className="flex-1 overflow-y-auto py-1">
+                {filtered.length === 0 && (
+                  <p className="px-4 py-6 text-center text-[13px]" style={{ color: 'var(--text-dim)' }}>
+                    {allConversations.length === 0 ? 'Loading…' : 'No conversations found'}
+                  </p>
+                )}
+                {filtered.map((c) => {
+                  const title = getConversationTitle(c, user!.id);
+                  const selected = forwardSelected.has(c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setForwardSelected((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(c.id)) next.delete(c.id); else next.add(c.id);
+                        return next;
+                      })}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors hover-panel-alt"
+                    >
+                      {/* Avatar */}
+                      <div className="flex-shrink-0 flex items-center justify-center font-mono font-bold text-[13px]"
+                        style={{ width: 36, height: 36, borderRadius: 9, background: selected ? 'var(--accent)' : 'var(--panel-alt)', border: `1px solid ${selected ? 'var(--accent)' : 'var(--border)'}`, color: selected ? '#fff' : 'var(--accent)', transition: 'all 0.15s' }}>
+                        {selected
+                          ? <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                          : title.slice(0, 1).toUpperCase()}
+                      </div>
+                      {/* Name */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[14px] font-medium truncate" style={{ color: selected ? 'var(--text)' : 'var(--text-muted)' }}>{title}</p>
+                        <p className="text-[11px] font-mono truncate" style={{ color: 'var(--text-dim)' }}>
+                          {c.type === 'direct' ? 'Direct message' : c.type === 'group' ? 'Group' : 'Channel'}
+                        </p>
+                      </div>
+                      {/* Checkmark circle */}
+                      <div className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center transition-all"
+                        style={{ background: selected ? 'var(--accent)' : 'transparent', border: `1.5px solid ${selected ? 'var(--accent)' : 'var(--border)'}` }}>
+                        {selected && <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Optional comment */}
+              <div className="px-4 py-3 flex-shrink-0" style={{ borderTop: '1px solid var(--border)' }}>
+                <input
+                  value={forwardComment}
+                  onChange={(e) => setForwardComment(e.target.value)}
+                  placeholder="Add a comment… (optional)"
+                  className="w-full text-[13px] focus:outline-none"
+                  style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 12px', color: 'var(--text)' }}
+                  onFocus={(e) => (e.target.style.borderColor = 'var(--accent-dim)')}
+                  onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
+                />
+              </div>
+
+              {/* Submit */}
+              <div className="px-4 pb-4 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={handleForward}
+                  disabled={forwardSelected.size === 0 || forwardLoading}
+                  className="w-full font-mono font-semibold text-[13px] disabled:opacity-35 transition-opacity hover:opacity-90"
+                  style={{ background: 'var(--accent)', color: '#fff', padding: '11px', borderRadius: 9 }}
+                >
+                  {forwardLoading
+                    ? 'Forwarding…'
+                    : forwardSelected.size === 0
+                      ? 'Forward'
+                      : `Forward (${forwardSelected.size})`}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Message list */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col" style={{ background: 'var(--bg)' }}>
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 pt-4 pb-16 flex flex-col" style={{ background: 'var(--bg)' }}>
         {messages.map((message, index) => {
           const mine = message.senderId === user!.id;
           const read = other ? readReceipts[message.id]?.has(other.user_id) : false;
@@ -430,6 +852,27 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
           const sender = membersById.get(message.senderId ?? '');
           const isEditing = editingMessageId === message.id;
           const isMediaBubble = (message.type === 'image' || message.type === 'video') && !message.deletedAt && !isEditing;
+
+          // ── Date divider ──────────────────────────────────────────────────
+          const msgDate = new Date(message.createdAt);
+          const msgDay = msgDate.toDateString();
+          const prevDay = index > 0 ? new Date(messages[index - 1].createdAt).toDateString() : null;
+          const showDivider = msgDay !== prevDay;
+
+          let dividerLabel = '';
+          if (showDivider) {
+            const today = new Date();
+            const yesterday = new Date(today);
+            yesterday.setDate(today.getDate() - 1);
+            if (msgDay === today.toDateString()) {
+              dividerLabel = 'Today';
+            } else if (msgDay === yesterday.toDateString()) {
+              dividerLabel = 'Yesterday';
+            } else {
+              dividerLabel = msgDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+            }
+          }
+          // ─────────────────────────────────────────────────────────────────
 
           // No grouping — every message shows its own avatar + name/timestamp
           const bubbleBorderRadius = mine
@@ -439,22 +882,63 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
           // Helper: reply quote block
           const ReplyQuote = ({ replyId }: { replyId: string }) => {
             const original = messagesById.get(replyId);
-            const authorName = original ? (original.senderId === user!.id ? user!.displayName : membersById.get(original.senderId ?? '')?.display_name ?? 'Someone') : null;
+            const authorName = original
+              ? (original.senderId === user!.id ? user!.displayName : membersById.get(original.senderId ?? '')?.display_name ?? 'Someone')
+              : null;
+
+            function handleJump(e: React.MouseEvent) {
+              e.stopPropagation();
+              if (msgRefs.current.has(replyId)) {
+                scrollToMessage(replyId);
+              } else {
+                showToast('Original message is not loaded yet');
+              }
+            }
+
             return (
-              <div className="mb-2 px-2.5 py-1.5 rounded-lg border-l-2"
-                style={{ background: mine ? 'rgba(0,0,0,0.12)' : 'var(--panel-alt)', borderColor: mine ? 'rgba(255,255,255,0.4)' : 'var(--accent)' }}>
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={handleJump}
+                onKeyDown={(e) => e.key === 'Enter' && handleJump(e as any)}
+                className="mb-2 px-2.5 py-1.5 rounded-lg border-l-2 transition-colors"
+                style={{
+                  cursor: 'pointer',
+                  background: mine ? 'rgba(0,0,0,0.12)' : 'var(--panel-alt)',
+                  borderColor: mine ? 'rgba(255,255,255,0.4)' : 'var(--accent)',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = mine ? 'rgba(0,0,0,0.2)' : 'var(--bg)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = mine ? 'rgba(0,0,0,0.12)' : 'var(--panel-alt)'; }}
+              >
                 {original ? (<>
                   <p className="text-[11px] font-semibold mb-0.5" style={{ color: mine ? 'rgba(255,255,255,0.8)' : 'var(--accent)' }}>{authorName}</p>
                   <p className="text-xs truncate" style={{ color: mine ? 'rgba(255,255,255,0.6)' : 'var(--text-dim)' }}>
                     {original.deletedAt ? 'This message was deleted' : original.file ? '📎 Attachment' : decodeMessageText(original.ciphertext)}
                   </p>
-                </>) : <p className="text-xs italic" style={{ color: mine ? 'rgba(255,255,255,0.5)' : 'var(--text-dim)' }}>Original message</p>}
+                </>) : (
+                  <p className="text-xs italic" style={{ color: mine ? 'rgba(255,255,255,0.5)' : 'var(--text-dim)' }}>Original message</p>
+                )}
               </div>
             );
           };
 
           return (
-            <div key={message.id} className={`flex items-end gap-2 group mt-3 ${mine ? 'flex-row-reverse' : 'flex-row'}`}>
+            <div key={message.id}>
+              {/* Date divider */}
+              {showDivider && (
+                <div className="flex items-center justify-center my-4">
+                  <span className="px-3 py-1 rounded-full text-[11px] font-mono select-none"
+                    style={{ background: 'var(--panel-alt)', color: 'var(--text-dim)', border: '1px solid var(--border)' }}>
+                    {dividerLabel}
+                  </span>
+                </div>
+              )}
+            <div
+              ref={(el) => { if (el) msgRefs.current.set(message.id, el); else msgRefs.current.delete(message.id); }}
+              className={`flex items-end gap-2 group mt-3 ${mine ? 'flex-row-reverse' : 'flex-row'} transition-colors duration-300`}
+              style={highlightedMsgId === message.id ? { background: 'var(--accent-wash)', borderRadius: 12, margin: '12px -4px', padding: '0 4px' } : undefined}
+              onMouseEnter={(e) => calcToolbarDir(e.currentTarget, message.id)}
+            >
               {/* Avatar — shown on every message */}
               <div className="w-8 h-8 rounded-lg flex items-center justify-center font-mono font-bold text-[13px] flex-shrink-0 self-end mb-0.5"
                 style={{ background: mine ? 'var(--accent-dim)' : 'var(--panel-alt)', border: '1px solid var(--border)', color: mine ? '#fff' : 'var(--accent)' }}
@@ -464,6 +948,18 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
 
               {/* Column: name+time header + bubble + reactions */}
               <div className="flex flex-col max-w-[62%]" style={{ alignItems: mine ? 'flex-end' : 'flex-start' }}>
+                {/* Forwarded label — shows original sender, preserved through chains */}
+                {message.forwardedFromMessageId && message.forwardedFromDisplayName && !message.deletedAt && (
+                  <div className="flex items-center gap-1 mb-0.5 px-1" style={{ flexDirection: mine ? 'row-reverse' : 'row' }}>
+                    <svg className="w-3 h-3 flex-shrink-0" style={{ color: 'var(--text-dim)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="text-[11px] italic" style={{ color: 'var(--text-dim)' }}>
+                      Forwarded from <span style={{ color: 'var(--text-muted)', fontStyle: 'normal', fontWeight: 500 }}>{message.forwardedFromDisplayName}</span>
+                    </span>
+                  </div>
+                )}
+
                 {/* Name + timestamp — every message */}
                 {!message.deletedAt && (
                   <div className="flex items-baseline gap-2 mb-1 px-1" style={{ flexDirection: mine ? 'row-reverse' : 'row' }}>
@@ -474,6 +970,9 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
                       {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       {mine && read && ' · ✓✓'}
                     </span>
+                    {bookmarkIds.has(message.id) && (
+                      <svg className="w-3 h-3 flex-shrink-0" style={{ color: 'var(--warning)' }} fill="currentColor" viewBox="0 0 24 24"><path d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg>
+                    )}
                   </div>
                 )}
 
@@ -547,33 +1046,80 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
 
               {/* Hover toolbar — sibling to the column */}
               {!isEditing && !message.deletedAt && (
-                <div className={`self-end mb-0.5 flex-shrink-0 transition-all duration-150 ${openMenuId === message.id ? 'opacity-100 pointer-events-auto' : 'opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto'}`}>
+                <div className={`flex-shrink-0 transition-all duration-150 ${(msgDirs[message.id] ?? 'up') === 'up' ? 'self-end mb-0.5' : 'self-start mt-0.5'} ${openMenuId === message.id ? 'opacity-100 pointer-events-auto' : 'opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto'}`}>
                   <div className="flex items-center rounded-2xl overflow-visible" style={{ background: 'var(--panel)', border: '1px solid var(--border)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
                     {QUICK_EMOJIS.map((e) => (
                       <button key={e} onClick={() => toggleReaction(message.id, e)} className="w-8 h-8 text-[16px] flex items-center justify-center transition-colors first:rounded-l-2xl hover-panel-alt">{e}</button>
                     ))}
                     <div className="w-px h-5 mx-0.5 flex-shrink-0" style={{ background: 'var(--border)' }} />
                     <div className="relative">
-                      <button onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === message.id ? null : message.id); }}
+                      <button onClick={(e) => { e.stopPropagation(); calcToolbarDir(e.currentTarget, message.id); setOpenMenuId(openMenuId === message.id ? null : message.id); }}
                         className="w-8 h-8 flex items-center justify-center transition-colors rounded-r-2xl hover-panel-alt" style={{ color: 'var(--text-dim)' }}>
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" /></svg>
                       </button>
                       {openMenuId === message.id && (
-                        <div className={`absolute top-full mt-1 z-30 w-52 rounded-xl overflow-hidden py-1 ${mine ? 'right-0' : 'left-0'}`}
+                        <div className={`absolute z-30 w-52 rounded-xl overflow-hidden py-1 ${mine ? 'right-0' : 'left-0'} ${(msgDirs[message.id] ?? 'up') === 'up' ? 'bottom-full mb-1' : 'top-full mt-1'}`}
                           style={{ background: 'var(--panel)', border: '1px solid var(--border)', boxShadow: '0 12px 32px rgba(0,0,0,0.5)' }}>
+
+                          {/* 1. Reply */}
                           <button type="button" onClick={() => { setReplyingTo(message); setOpenMenuId(null); }}
                             className="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover-panel-alt" style={{ color: 'var(--text-muted)' }}>
                             <svg className="w-4 h-4" style={{ color: 'var(--text-dim)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
                             Reply
                           </button>
-                          {mine && (
-                            <button type="button" onClick={() => { startEdit(message); setOpenMenuId(null); }}
+
+                          {/* 2. Copy text — text messages only */}
+                          {message.type === 'text' && !message.deletedAt && decodeMessageText(message.ciphertext) && (
+                            <button type="button" onClick={() => { navigator.clipboard.writeText(decodeMessageText(message.ciphertext)); setOpenMenuId(null); }}
                               className="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover-panel-alt" style={{ color: 'var(--text-muted)' }}>
-                              <svg className="w-4 h-4" style={{ color: 'var(--text-dim)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                              Edit message
+                              <svg className="w-4 h-4" style={{ color: 'var(--text-dim)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                              Copy text
                             </button>
                           )}
-                          {mine && user?.role === 'admin' && (
+
+                          {/* 3a. Save for me (personal bookmark) */}
+                          {!message.deletedAt && (
+                            <button type="button" onClick={() => { handleBookmark(message); setOpenMenuId(null); }}
+                              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover-panel-alt" style={{ color: 'var(--text-muted)' }}>
+                              <svg className="w-4 h-4" style={{ color: bookmarkIds.has(message.id) ? 'var(--warning)' : 'var(--text-dim)' }} fill={bookmarkIds.has(message.id) ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg>
+                              {bookmarkIds.has(message.id) ? 'Remove bookmark' : 'Save for me'}
+                            </button>
+                          )}
+
+                          {/* 3b. Pin for all */}
+                          {!message.deletedAt && (
+                            <button type="button" onClick={() => { handlePin(message); setOpenMenuId(null); }}
+                              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover-panel-alt" style={{ color: 'var(--text-muted)' }}>
+                              <svg className="w-4 h-4" style={{ color: pinnedIds.has(message.id) ? 'var(--accent)' : 'var(--text-dim)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l-4 4m0 0l-4-4m4 4V3m0 14a9 9 0 110-18 9 9 0 010 18z" />
+                              </svg>
+                              {pinnedIds.has(message.id) ? 'Unpin for all' : 'Pin for all'}
+                            </button>
+                          )}
+
+                          {/* 4. Forward */}
+                          {!message.deletedAt && (
+                            <button type="button" onClick={() => { openForwardPicker(message); setOpenMenuId(null); }}
+                              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover-panel-alt" style={{ color: 'var(--text-muted)' }}>
+                              <svg className="w-4 h-4" style={{ color: 'var(--text-dim)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                              Forward
+                            </button>
+                          )}
+
+                          {/* 5. Edit — own messages */}
+                          {mine && !message.deletedAt && message.type === 'text' && (
+                            <>
+                              <div className="h-px mx-3 my-1" style={{ background: 'var(--border)' }} />
+                              <button type="button" onClick={() => { startEdit(message); setOpenMenuId(null); }}
+                                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors hover-panel-alt" style={{ color: 'var(--text-muted)' }}>
+                                <svg className="w-4 h-4" style={{ color: 'var(--text-dim)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                Edit message
+                              </button>
+                            </>
+                          )}
+
+                          {/* 6. Delete — admin only */}
+                          {user?.role === 'admin' && !message.deletedAt && (
                             <>
                               <div className="h-px mx-3 my-1" style={{ background: 'var(--border)' }} />
                               <button type="button" onClick={() => { handleDelete(message.id); setOpenMenuId(null); }}
@@ -592,9 +1138,11 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
                 </div>
               )}
             </div>
+            </div>
           );
         })}
-        <div ref={bottomRef} />
+        {/* Spacer so the last message is never hidden behind the input bar or hover toolbar */}
+        <div ref={bottomRef} style={{ paddingBottom: 8 }} />
       </div>
 
       {/* Reply preview bar */}
@@ -652,10 +1200,25 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
 
       {lightboxItem && <Lightbox file={lightboxItem.file} type={lightboxItem.type} onClose={() => setLightboxItem(null)} />}
 
+      {/* ── Toast notification ── */}
+      {toast && (
+        <div className="absolute bottom-24 left-1/2 z-50 pointer-events-none"
+          style={{ transform: 'translateX(-50%)', animation: 'fadeInUp 0.2s ease' }}>
+          <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-2xl font-mono text-[13px]"
+            style={{ background: 'var(--panel)', border: '1px solid var(--border)', color: 'var(--text)', whiteSpace: 'nowrap' }}>
+            <svg className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--accent)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+            </svg>
+            {toast}
+          </div>
+        </div>
+      )}
+
       <style>{`
         .btn-icon { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: 1px solid var(--border); border-radius: 8px; color: var(--text-muted); cursor: pointer; transition: all 0.15s; flex-shrink: 0; }
         .btn-icon:hover { border-color: var(--text-dim); color: var(--accent); }
         .hover-panel-alt:hover { background: var(--panel-alt); }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateX(-50%) translateY(8px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
       `}</style>
     </div>
   );
