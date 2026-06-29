@@ -69,7 +69,7 @@ export async function getUserAvatarHandler(req: Request, res: Response) {
   const filePath = usersService.resolveAvatarPath(req.params.userId);
   if (!existsSync(filePath)) throw new HttpError(404, 'Avatar not found');
   res.setHeader('Content-Type', 'image/webp');
-  res.setHeader('Cache-Control', 'private, max-age=86400');
+  res.setHeader('Cache-Control', 'no-cache');
   createReadStream(filePath).pipe(res);
 }
 
