@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
+import { writeAuditLog } from '../../utils/audit.js';
 import * as messagesService from './messages.service.js';
 
 const sendMessageSchema = z.object({
@@ -35,6 +36,23 @@ export async function listMessagesHandler(req: Request, res: Response) {
   res.json({ messages });
 }
 
+const searchMessagesSchema = z.object({
+  q: z.string().min(1).max(200),
+  conversationId: z.string().uuid().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
+export async function searchMessagesHandler(req: Request, res: Response) {
+  const { q, conversationId, limit, offset } = searchMessagesSchema.parse(req.query);
+  const { results, total } = await messagesService.searchMessages(req.user!.id, q, {
+    conversationId,
+    limit,
+    offset,
+  });
+  res.json({ results, total, query: q });
+}
+
 export async function markReadHandler(req: Request, res: Response) {
   await messagesService.markMessageRead(req.params.id, req.user!.id, req.user!.deviceId);
   res.status(204).send();
@@ -48,5 +66,75 @@ export async function editMessageHandler(req: Request, res: Response) {
 
 export async function deleteMessageHandler(req: Request, res: Response) {
   const result = await messagesService.deleteMessage(req.params.id, req.user!.id);
+  writeAuditLog('messages.deleted', {
+    userId: req.user!.id,
+    targetType: 'message',
+    targetId: result.id,
+    ipAddress: req.ip,
+    metadata: { conversationId: result.conversationId },
+  });
   res.json({ message: result });
+}
+
+export async function pinMessageHandler(req: Request, res: Response) {
+  const result = await messagesService.pinMessage(req.params.id, req.user!.id);
+  res.json(result);
+}
+
+export async function unpinMessageHandler(req: Request, res: Response) {
+  const result = await messagesService.unpinMessage(req.params.id, req.user!.id);
+  res.json(result);
+}
+
+export async function getPinnedHandler(req: Request, res: Response) {
+  const conversationId = z.string().uuid().parse(req.query.conversationId);
+  const pinned = await messagesService.getPinnedMessages(conversationId, req.user!.id);
+  res.json({ pinned });
+}
+
+export async function bookmarkMessageHandler(req: Request, res: Response) {
+  const result = await messagesService.bookmarkMessage(req.params.id, req.user!.id);
+  res.json(result);
+}
+
+export async function unbookmarkMessageHandler(req: Request, res: Response) {
+  const result = await messagesService.unbookmarkMessage(req.params.id, req.user!.id);
+  res.json(result);
+}
+
+export async function getUserBookmarksHandler(req: Request, res: Response) {
+  const conversationId = z.string().uuid().parse(req.query.conversationId);
+  const bookmarks = await messagesService.getUserBookmarks(req.user!.id, conversationId);
+  res.json({ bookmarks });
+}
+
+export async function forwardMessageHandler(req: Request, res: Response) {
+  const { targetConversationId } = z.object({ targetConversationId: z.string().uuid() }).parse(req.body);
+  const message = await messagesService.forwardMessage(req.params.id, req.user!.id, targetConversationId);
+  res.status(201).json({ message });
+}
+
+export async function getReceiptsHandler(req: Request, res: Response) {
+  const { receipts, memberCount } = await messagesService.getMessageReceipts(req.params.id, req.user!.id);
+  res.json({ receipts, memberCount });
+}
+
+const addReactionSchema = z.object({
+  emoji: z.string().min(1).max(10),
+});
+
+export async function addReactionHandler(req: Request, res: Response) {
+  const { emoji } = addReactionSchema.parse(req.body);
+  const reaction = await messagesService.addReaction(req.params.id, req.user!.id, emoji);
+  res.status(201).json({ reaction });
+}
+
+export async function removeReactionHandler(req: Request, res: Response) {
+  await messagesService.removeReaction(req.params.id, req.user!.id, req.params.emoji);
+  res.status(204).send();
+}
+
+export async function getUndeliveredHandler(req: Request, res: Response) {
+  const messages = await messagesService.getUndeliveredMessages(req.user!.id, req.user!.deviceId);
+  res.json({ messages });
 }

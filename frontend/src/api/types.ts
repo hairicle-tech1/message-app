@@ -4,6 +4,17 @@ export interface User {
   username: string;
   displayName: string;
   role: string;
+  avatarUrl?: string | null;
+}
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  department: string | null;
+  role: string;
 }
 
 export interface DirectoryUser {
@@ -27,6 +38,7 @@ export interface ConversationMember {
 
 export interface Conversation {
   id: string;
+  team_id: string | null;
   type: ConversationType;
   name: string | null;
   description: string | null;
@@ -34,6 +46,16 @@ export interface Conversation {
   created_by: string;
   created_at: string;
   updated_at: string;
+  unread_count?: number;
+  is_muted?: boolean;
+  last_message?: {
+    sender_username: string;
+    sender_display_name: string;
+    type: MessageType;
+    ciphertext: string;
+    deleted_at: string | null;
+    created_at: string;
+  } | null;
   members?: ConversationMember[];
 }
 
@@ -45,7 +67,44 @@ export interface FileMeta {
   mimeType: string;
   sizeBytes: number;
   hasThumbnail: boolean;
+  durationSecs?: number | null;
   createdAt: string;
+}
+
+export interface Reaction {
+  emoji: string;
+  userId: string;
+  username: string;
+  displayName: string;
+}
+
+export interface LinkPreview {
+  url: string;
+  title: string | null;
+  description: string | null;
+  imageUrl: string | null;
+  siteName: string | null;
+}
+
+export interface Team {
+  id: string;
+  name: string;
+  description: string | null;
+  avatarUrl: string | null;
+  createdBy: string;
+  createdAt: string;
+  memberCount: number;
+  myRole: 'owner' | 'admin' | 'member';
+}
+
+export interface TeamMember {
+  userId: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  department: string | null;
+  role: 'owner' | 'admin' | 'member';
+  joinedAt: string;
 }
 
 export interface ConversationMediaItem {
@@ -55,17 +114,46 @@ export interface ConversationMediaItem {
   file: FileMeta;
 }
 
+export interface ConversationAttachmentItem {
+  messageId: string;
+  type: MessageType;
+  createdAt: string;
+  senderId: string;
+  file: FileMeta;
+}
+
+export interface PinnedMessage {
+  messageId: string;
+  type: string;
+  ciphertext: string;
+  senderDisplayName: string;
+  pinnedAt: string;
+  pinnedByName: string;
+}
+
+export interface BookmarkedMessage {
+  messageId: string;
+  type: string;
+  ciphertext: string;
+  senderDisplayName: string;
+  savedAt: string;
+}
+
 export interface Message {
   id: string;
   conversationId: string;
-  senderId: string;
+  senderId: string | null;  // null when the sender's account has been deleted
   type: MessageType;
   ciphertext: string;
   replyToMessageId: string | null;
+  forwardedFromMessageId?: string | null;
+  forwardedFromDisplayName?: string | null;
   createdAt: string;
   editedAt?: string | null;
   deletedAt?: string | null;
   file?: FileMeta;
+  reactions?: Reaction[];
+  linkPreview?: LinkPreview | null;
 }
 
 export interface MessageEditResult {

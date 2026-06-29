@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { SocketProvider } from './context/SocketContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { ChatPage } from './pages/ChatPage';
 import { LoginPage } from './pages/LoginPage';
 
@@ -41,12 +42,14 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <SocketProvider>
-        <Router>
-          <AppRoutes />
-        </Router>
-      </SocketProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <SocketProvider>
+          <Router>
+            <AppRoutes />
+          </Router>
+        </SocketProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

@@ -1,5 +1,5 @@
 import { apiFetch } from './client';
-import type { Message, MessageDeleteResult, MessageEditResult, MessageType } from './types';
+import type { BookmarkedMessage, Message, MessageDeleteResult, MessageEditResult, MessageType, PinnedMessage } from './types';
 
 export function listMessages(conversationId: string, before?: string) {
   const params = new URLSearchParams({ conversationId });
@@ -36,5 +36,57 @@ export function editMessage(messageId: string, ciphertext: string) {
 export function deleteMessage(messageId: string) {
   return apiFetch<{ message: MessageDeleteResult }>(`/api/messages/${messageId}`, {
     method: 'DELETE',
+  });
+}
+
+export function addReaction(messageId: string, emoji: string) {
+  return apiFetch<void>(`/api/messages/${messageId}/reactions`, {
+    method: 'POST',
+    body: JSON.stringify({ emoji }),
+  });
+}
+
+export function removeReaction(messageId: string, emoji: string) {
+  return apiFetch<void>(`/api/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`, {
+    method: 'DELETE',
+  });
+}
+
+export function searchMessages(q: string, conversationId?: string) {
+  const params = new URLSearchParams({ q });
+  if (conversationId) params.set('conversationId', conversationId);
+  return apiFetch<{ results: Message[]; total: number; query: string }>(
+    `/api/messages/search?${params.toString()}`,
+  );
+}
+
+export function getPinnedMessages(conversationId: string) {
+  return apiFetch<{ pinned: PinnedMessage[] }>(`/api/messages/pinned?conversationId=${conversationId}`);
+}
+
+export function pinMessage(messageId: string) {
+  return apiFetch<{ conversationId: string; messageId: string }>(`/api/messages/${messageId}/pin`, { method: 'POST' });
+}
+
+export function unpinMessage(messageId: string) {
+  return apiFetch<{ conversationId: string; messageId: string }>(`/api/messages/${messageId}/pin`, { method: 'DELETE' });
+}
+
+export function getUserBookmarks(conversationId: string) {
+  return apiFetch<{ bookmarks: BookmarkedMessage[] }>(`/api/messages/bookmarks?conversationId=${conversationId}`);
+}
+
+export function bookmarkMessage(messageId: string) {
+  return apiFetch<{ messageId: string }>(`/api/messages/${messageId}/bookmark`, { method: 'POST' });
+}
+
+export function unbookmarkMessage(messageId: string) {
+  return apiFetch<{ messageId: string }>(`/api/messages/${messageId}/bookmark`, { method: 'DELETE' });
+}
+
+export function forwardMessage(messageId: string, targetConversationId: string) {
+  return apiFetch<{ message: Message }>(`/api/messages/${messageId}/forward`, {
+    method: 'POST',
+    body: JSON.stringify({ targetConversationId }),
   });
 }

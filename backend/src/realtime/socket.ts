@@ -5,8 +5,10 @@ import { db } from '../config/db.js';
 import { env } from '../config/env.js';
 import { redis } from '../config/redis.js';
 import type { AuthUser } from '../middleware/auth.middleware.js';
-import { assertMember } from '../modules/conversations/conversations.service.js';
+import { assertMember, pinMessage, unpinMessage } from '../modules/conversations/conversations.service.js';
 import * as messagesService from '../modules/messages/messages.service.js';
+import * as callsService from '../modules/calls/calls.service.js';
+import { sendPushToUsers } from '../utils/push.js';
 
 interface AuthedSocket extends Socket {
   data: {
@@ -41,14 +43,32 @@ export function setupRealtime(httpServer: HttpServer) {
     void handleConnection(io, socket as AuthedSocket);
   });
 
-  return io;
+  // Expose a way to force-disconnect all sockets for a given user ID
+  const ioRef = io;
+  return {
+    io: ioRef,
+    disconnectUser: async (userId: string) => {
+      const sockets = await ioRef.in(`user:${userId}`).fetchSockets();
+      for (const s of sockets) {
+        s.emit('account:disabled');
+        s.disconnect(true);
+      }
+    },
+  };
 }
 
 async function handleConnection(io: Server, socket: AuthedSocket) {
   const { user } = socket.data;
 
   await joinConversationRooms(socket);
+  socket.join(`user:${user.id}`); // personal room for direct signalling
   await markUserOnline(io, user.id);
+
+  socket.on('presence:get', () => {
+    void sendPresenceSnapshot(socket);
+  });
+
+  let offlineHandled = false;
 
   socket.on('typing:start', async (payload: { conversationId: string }) => {
     if (!(await isMember(socket, payload.conversationId))) return;
@@ -92,20 +112,17 @@ async function handleConnection(io: Server, socket: AuthedSocket) {
     'message:read',
     async (payload: { messageId: string }, callback?: (response: { ok: boolean; error?: string }) => void) => {
       try {
-        await messagesService.markMessageRead(payload.messageId, user.id, user.deviceId);
-
-        const result = await db.query<{ conversation_id: string }>(
-          'SELECT conversation_id FROM messages WHERE id = $1',
-          [payload.messageId],
+        const { conversationId, readAt } = await messagesService.markMessageRead(
+          payload.messageId,
+          user.id,
+          user.deviceId,
         );
-        const conversationId = result.rows[0]?.conversation_id;
-        if (conversationId) {
-          io.to(`conversation:${conversationId}`).emit('message:read', {
-            messageId: payload.messageId,
-            userId: user.id,
-            deviceId: user.deviceId,
-          });
-        }
+        io.to(`conversation:${conversationId}`).emit('message:read', {
+          messageId: payload.messageId,
+          userId: user.id,
+          deviceId: user.deviceId,
+          readAt,
+        });
 
         callback?.({ ok: true });
       } catch (err) {
@@ -143,8 +160,266 @@ async function handleConnection(io: Server, socket: AuthedSocket) {
     },
   );
 
+  socket.on(
+    'reaction:add',
+    async (
+      payload: { messageId: string; emoji: string },
+      callback?: (response: { ok: boolean; reaction?: unknown; error?: string }) => void,
+    ) => {
+      try {
+        const reaction = await messagesService.addReaction(payload.messageId, user.id, payload.emoji);
+        io.to(`conversation:${reaction.conversationId}`).emit('reaction:added', {
+          messageId: payload.messageId,
+          ...reaction,
+        });
+        callback?.({ ok: true, reaction });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    'reaction:remove',
+    async (
+      payload: { messageId: string; emoji: string },
+      callback?: (response: { ok: boolean; error?: string }) => void,
+    ) => {
+      try {
+        const { conversationId } = await messagesService.removeReaction(payload.messageId, user.id, payload.emoji);
+        io.to(`conversation:${conversationId}`).emit('reaction:removed', {
+          messageId: payload.messageId,
+          userId: user.id,
+          emoji: payload.emoji,
+        });
+        callback?.({ ok: true });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    'message:pin',
+    async (
+      payload: { conversationId: string; messageId: string },
+      callback?: (response: { ok: boolean; pin?: unknown; error?: string }) => void,
+    ) => {
+      try {
+        const pin = await pinMessage(payload.conversationId, payload.messageId, user.id);
+        io.to(`conversation:${payload.conversationId}`).emit('message:pinned', pin);
+        callback?.({ ok: true, pin });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    'message:unpin',
+    async (
+      payload: { conversationId: string; messageId: string },
+      callback?: (response: { ok: boolean; error?: string }) => void,
+    ) => {
+      try {
+        await unpinMessage(payload.conversationId, payload.messageId, user.id);
+        io.to(`conversation:${payload.conversationId}`).emit('message:unpinned', {
+          conversationId: payload.conversationId,
+          messageId: payload.messageId,
+          unpinnedBy: user.id,
+        });
+        callback?.({ ok: true });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  // ── WebRTC Call Signalling ─────────────────────────────────────────────────
+
+  socket.on(
+    'call:start',
+    async (
+      payload: { conversationId: string; type: 'audio' | 'video' },
+      callback?: (r: { ok: boolean; call?: unknown; error?: string }) => void,
+    ) => {
+      try {
+        const call = await callsService.initiateCall(payload.conversationId, user.id, payload.type);
+
+        // Notify all other conversation members of incoming call
+        socket.to(`conversation:${payload.conversationId}`).emit('call:incoming', {
+          callId: call.id,
+          conversationId: payload.conversationId,
+          initiatorId: user.id,
+          type: payload.type,
+        });
+
+        // Push notification to offline members
+        const otherMemberIds = call.participants
+          .map((p) => p.userId)
+          .filter((id) => id !== user.id);
+        void sendPushToUsers(otherMemberIds, {
+          title: 'Incoming call',
+          body: `${user.email} is calling`,
+          data: { callId: call.id, conversationId: payload.conversationId, type: payload.type },
+        });
+
+        callback?.({ ok: true, call });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    'call:offer',
+    async (
+      payload: { callId: string; targetUserId: string; sdp: unknown },
+      callback?: (r: { ok: boolean; error?: string }) => void,
+    ) => {
+      try {
+        // Relay SDP offer directly to the target user's personal room
+        io.to(`user:${payload.targetUserId}`).emit('call:offer', {
+          callId: payload.callId,
+          fromUserId: user.id,
+          sdp: payload.sdp,
+        });
+        callback?.({ ok: true });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    'call:answer',
+    async (
+      payload: { callId: string; targetUserId: string; sdp: unknown },
+      callback?: (r: { ok: boolean; error?: string }) => void,
+    ) => {
+      try {
+        await callsService.joinCall(payload.callId, user.id);
+        io.to(`user:${payload.targetUserId}`).emit('call:answer', {
+          callId: payload.callId,
+          fromUserId: user.id,
+          sdp: payload.sdp,
+        });
+        // Notify conversation the call was answered
+        const call = await callsService.getCallById(payload.callId, user.id);
+        io.to(`conversation:${call.conversationId}`).emit('call:joined', {
+          callId: payload.callId,
+          userId: user.id,
+        });
+        callback?.({ ok: true });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    'call:ice-candidate',
+    (
+      payload: { callId: string; targetUserId: string; candidate: unknown },
+      callback?: (r: { ok: boolean; error?: string }) => void,
+    ) => {
+      try {
+        io.to(`user:${payload.targetUserId}`).emit('call:ice-candidate', {
+          callId: payload.callId,
+          fromUserId: user.id,
+          candidate: payload.candidate,
+        });
+        callback?.({ ok: true });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    'call:reject',
+    async (
+      payload: { callId: string; initiatorUserId: string },
+      callback?: (r: { ok: boolean; error?: string }) => void,
+    ) => {
+      try {
+        io.to(`user:${payload.initiatorUserId}`).emit('call:rejected', {
+          callId: payload.callId,
+          byUserId: user.id,
+        });
+        callback?.({ ok: true });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    'call:leave',
+    async (
+      payload: { callId: string },
+      callback?: (r: { ok: boolean; callEnded?: boolean; error?: string }) => void,
+    ) => {
+      try {
+        const { callEnded } = await callsService.leaveCall(payload.callId, user.id);
+        const call = await callsService.getCallById(payload.callId, user.id);
+
+        io.to(`conversation:${call.conversationId}`).emit('call:participant-left', {
+          callId: payload.callId,
+          userId: user.id,
+          callEnded,
+        });
+
+        if (callEnded) {
+          io.to(`conversation:${call.conversationId}`).emit('call:ended', {
+            callId: payload.callId,
+            durationSecs: call.durationSecs,
+          });
+        }
+
+        callback?.({ ok: true, callEnded });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on(
+    'call:end',
+    async (
+      payload: { callId: string },
+      callback?: (r: { ok: boolean; error?: string }) => void,
+    ) => {
+      try {
+        const call = await callsService.getCallById(payload.callId, user.id);
+        await callsService.endCall(payload.callId, user.id);
+        const ended = await callsService.getCallById(payload.callId, user.id);
+
+        io.to(`conversation:${call.conversationId}`).emit('call:ended', {
+          callId: payload.callId,
+          endedBy: user.id,
+          durationSecs: ended.durationSecs,
+        });
+
+        callback?.({ ok: true });
+      } catch (err) {
+        callback?.({ ok: false, error: (err as Error).message });
+      }
+    },
+  );
+
+  socket.on('user:offline', () => {
+    if (!offlineHandled) {
+      offlineHandled = true;
+      void markUserOffline(io, user.id);
+    }
+  });
+
   socket.on('disconnect', () => {
-    void markUserOffline(io, user.id);
+    if (!offlineHandled) {
+      offlineHandled = true;
+      void markUserOffline(io, user.id);
+    }
   });
 }
 
@@ -167,6 +442,12 @@ async function isMember(socket: AuthedSocket, conversationId: string) {
   }
 }
 
+async function sendPresenceSnapshot(socket: AuthedSocket) {
+  const keys = await redis.keys(`${PRESENCE_KEY_PREFIX}*`);
+  const onlineUserIds = keys.map((key) => key.replace(PRESENCE_KEY_PREFIX, ''));
+  socket.emit('presence:init', { onlineUserIds });
+}
+
 async function markUserOnline(io: Server, userId: string) {
   const key = `${PRESENCE_KEY_PREFIX}${userId}`;
   const count = await redis.incr(key);
@@ -178,9 +459,11 @@ async function markUserOnline(io: Server, userId: string) {
 async function markUserOffline(io: Server, userId: string) {
   const key = `${PRESENCE_KEY_PREFIX}${userId}`;
   const count = await redis.decr(key);
-  if (count <= 0) {
+  if (count === 0) {
     await redis.del(key);
     await db.query('UPDATE users SET last_seen_at = now() WHERE id = $1', [userId]);
     io.emit('presence:update', { userId, status: 'offline' });
+  } else if (count < 0) {
+    await redis.del(key);
   }
 }
