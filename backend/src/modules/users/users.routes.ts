@@ -21,6 +21,9 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 
 const router = Router();
 
+// Avatar is public — <img> tags can't send Authorization headers
+router.get('/:userId/avatar', asyncHandler(getUserAvatarHandler));
+
 router.use(requireAuth);
 
 // Own profile
@@ -32,9 +35,6 @@ router.get('/me/notifications', asyncHandler(getNotificationPrefsHandler));
 router.patch('/me/notifications', asyncHandler(updateNotificationPrefsHandler));
 router.put('/me/devices/:deviceId/push-token', asyncHandler(registerPushTokenHandler));
 router.delete('/me/devices/:deviceId/push-token', asyncHandler(clearPushTokenHandler));
-
-// Avatar by user ID (any authenticated user can fetch)
-router.get('/:userId/avatar', asyncHandler(getUserAvatarHandler));
 
 // Directory — any authenticated user can browse
 router.get('/directory', asyncHandler(listDirectoryHandler));
