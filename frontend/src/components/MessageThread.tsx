@@ -303,39 +303,41 @@ export function MessageThread({ conversationId, presence, onBack }: MessageThrea
 
   function toggleReaction(messageId: string, emoji: string) {
     const msg = messages.find((m) => m.id === messageId);
-    const existing = (msg?.reactions ?? []).find((r) => r.userId === user!.id && r.emoji === emoji);
-    if (existing) {
-      // Optimistic remove — don't wait for socket echo
+    const myExisting = (msg?.reactions ?? []).find((r) => r.userId === user!.id);
+
+    if (myExisting?.emoji === emoji) {
+      // Same emoji → remove (toggle off)
       setMessages((prev) => prev.map((m) =>
         m.id !== messageId ? m : {
-          ...m,
-          reactions: (m.reactions ?? []).filter((r) => !(r.userId === user!.id && r.emoji === emoji)),
+          ...m, reactions: (m.reactions ?? []).filter((r) => r.userId !== user!.id),
         }
       ));
       messagesApi.removeReaction(messageId, emoji).catch(() => {
-        // Revert on failure
         setMessages((prev) => prev.map((m) =>
-          m.id !== messageId ? m : { ...m, reactions: [...(m.reactions ?? []), existing] }
+          m.id !== messageId ? m : { ...m, reactions: [...(m.reactions ?? []), myExisting] }
         ));
       });
     } else {
-      // Optimistic add
+      // Different emoji or no reaction → replace (remove old, add new)
       const optimistic = { emoji, userId: user!.id, username: user!.username, displayName: user!.displayName };
       setMessages((prev) => prev.map((m) =>
         m.id !== messageId ? m : {
-          ...m,
-          reactions: [...(m.reactions ?? []).filter((r) => !(r.userId === user!.id && r.emoji === emoji)), optimistic],
+          ...m, reactions: [...(m.reactions ?? []).filter((r) => r.userId !== user!.id), optimistic],
         }
       ));
-      messagesApi.addReaction(messageId, emoji).catch(() => {
-        // Revert on failure
+      // Remove old reaction first if there was one, then add new
+      const addNew = () => messagesApi.addReaction(messageId, emoji).catch(() => {
         setMessages((prev) => prev.map((m) =>
           m.id !== messageId ? m : {
-            ...m,
-            reactions: (m.reactions ?? []).filter((r) => !(r.userId === user!.id && r.emoji === emoji)),
+            ...m, reactions: (m.reactions ?? []).filter((r) => r.userId !== user!.id),
           }
         ));
       });
+      if (myExisting) {
+        messagesApi.removeReaction(messageId, myExisting.emoji).then(addNew).catch(addNew);
+      } else {
+        addNew();
+      }
     }
   }
 
