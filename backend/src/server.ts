@@ -7,16 +7,20 @@ import { setupRealtime } from './realtime/socket.js';
 
 async function main() {
   await db.query('SELECT 1');
-  await redis.ping();
+
+  // Redis ping — non-fatal so the server still starts if Redis is slow to connect
+  redis.ping().catch((err: Error) => {
+    console.warn('[redis] ping failed on startup:', err.message);
+  });
 
   const httpServer = http.createServer(app);
   const realtime = setupRealtime(httpServer);
 
-  // Make disconnectUser available to admin routes via app locals
   app.locals.disconnectUser = realtime.disconnectUser;
 
-  httpServer.listen(env.port, () => {
-    console.log(`Server listening on port ${env.port}`);
+  // Bind to 0.0.0.0 so Render can detect the open port
+  httpServer.listen(env.port, '0.0.0.0', () => {
+    console.log(`Server listening on 0.0.0.0:${env.port}`);
   });
 }
 
