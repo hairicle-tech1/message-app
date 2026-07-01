@@ -5,6 +5,7 @@ import bcrypt from 'bcrypt';
 import sharp from 'sharp';
 import { db } from '../../config/db.js';
 import { env } from '../../config/env.js';
+import { AVATAR_BUCKET, getPublicUrl, putObject, useObjectStorage } from '../../config/storage.js';
 import { HttpError } from '../../middleware/error.middleware.js';
 
 const avatarsRoot = path.resolve(env.uploadsDir, 'avatars');
@@ -192,17 +193,22 @@ export async function updateProfile(userId: string, fields: { displayName?: stri
 }
 
 export async function updateAvatar(userId: string, buffer: Buffer): Promise<UserProfile> {
-  if (!existsSync(avatarsRoot)) mkdirSync(avatarsRoot, { recursive: true });
-
   const webp = await sharp(buffer)
     .resize(AVATAR_SIZE, AVATAR_SIZE, { fit: 'cover' })
     .webp({ quality: 85 })
     .toBuffer();
 
-  const filePath = path.join(avatarsRoot, `${userId}.webp`);
-  await fs.writeFile(filePath, webp);
+  let avatarUrl: string;
+  if (useObjectStorage) {
+    const key = `${userId}.webp`;
+    await putObject(key, webp, 'image/webp', AVATAR_BUCKET);
+    avatarUrl = getPublicUrl(AVATAR_BUCKET, key) ?? `/api/users/${userId}/avatar`;
+  } else {
+    if (!existsSync(avatarsRoot)) mkdirSync(avatarsRoot, { recursive: true });
+    await fs.writeFile(path.join(avatarsRoot, `${userId}.webp`), webp);
+    avatarUrl = `/api/users/${userId}/avatar`;
+  }
 
-  const avatarUrl = `/api/users/${userId}/avatar`;
   const result = await db.query<{
     id: string; email: string; username: string; display_name: string;
     avatar_url: string | null; department: string | null; role: string;
