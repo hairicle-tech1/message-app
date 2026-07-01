@@ -66,6 +66,14 @@ export async function updateAvatarHandler(req: Request, res: Response) {
 }
 
 export async function getUserAvatarHandler(req: Request, res: Response) {
+  // When using Supabase Storage, avatar_url is a full public URL — redirect to it
+  const profile = await usersService.getProfile(req.params.userId);
+  if (profile?.avatarUrl?.startsWith('http')) {
+    res.setHeader('Cache-Control', 'no-cache');
+    return res.redirect(302, profile.avatarUrl);
+  }
+
+  // Fallback: serve from local disk
   const filePath = usersService.resolveAvatarPath(req.params.userId);
   if (!existsSync(filePath)) throw new HttpError(404, 'Avatar not found');
   res.setHeader('Content-Type', 'image/webp');

@@ -19,12 +19,14 @@ export const env = {
   uploadsDir: process.env.UPLOADS_DIR ?? 'uploads',
   maxFileSizeBytes: Number(process.env.MAX_FILE_SIZE_MB ?? 25) * 1024 * 1024,
 
-  // MinIO / S3 — all optional; local disk is used when MINIO_ENDPOINT is not set
-  minioEndpoint: process.env.MINIO_ENDPOINT,           // e.g. http://localhost:9000
-  minioAccessKey: process.env.MINIO_ACCESS_KEY,
-  minioSecretKey: process.env.MINIO_SECRET_KEY,
-  minioBucket: process.env.MINIO_BUCKET ?? 'messenger-files',
-  minioRegion: process.env.MINIO_REGION ?? 'us-east-1',
+  // S3-compatible object storage (MinIO locally, Supabase Storage in production)
+  // Local disk is used as fallback when STORAGE_ENDPOINT is not set
+  minioEndpoint: process.env.STORAGE_ENDPOINT ?? process.env.MINIO_ENDPOINT,
+  minioAccessKey: process.env.STORAGE_ACCESS_KEY ?? process.env.MINIO_ACCESS_KEY,
+  minioSecretKey: process.env.STORAGE_SECRET_KEY ?? process.env.MINIO_SECRET_KEY,
+  minioBucket: process.env.STORAGE_BUCKET ?? process.env.MINIO_BUCKET ?? 'messenger-files',
+  minioRegion: process.env.STORAGE_REGION ?? process.env.MINIO_REGION ?? 'us-east-1',
+  avatarBucket: process.env.AVATAR_BUCKET ?? 'avatars',
 
   // LDAP — all optional; LDAP auth is disabled when LDAP_URL is not set
   ldapUrl: process.env.LDAP_URL,
