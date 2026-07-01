@@ -3,6 +3,16 @@ import type { Redis as RedisClient } from 'ioredis';
 import { env } from './env.js';
 
 const require = createRequire(import.meta.url);
-const Redis = require('ioredis') as new (url: string) => RedisClient;
+const Redis = require('ioredis') as new (url: string, options?: object) => RedisClient;
 
-export const redis = new Redis(env.redisUrl);
+const isTls = env.redisUrl.startsWith('rediss://');
+
+export const redis = new Redis(env.redisUrl, {
+  tls: isTls ? { rejectUnauthorized: false } : undefined,
+  maxRetriesPerRequest: null,
+  enableReadyCheck: false,
+});
+
+redis.on('error', (err: Error) => {
+  console.error('[redis] connection error:', err.message);
+});
