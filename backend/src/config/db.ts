@@ -1,10 +1,24 @@
 import { Pool } from 'pg';
 import { env } from './env.js';
 
-export const db = new Pool({
-  connectionString: env.databaseUrl,
-  // NeonDB (and any TLS-enforcing Postgres) requires SSL
-  ssl: env.databaseUrl.includes('neon.tech') || env.databaseUrl.includes('sslmode=require')
-    ? { rejectUnauthorized: false }
-    : undefined,
-});
+// The pg module drops the project-ref suffix from Supabase usernames
+// (e.g. postgres.lwmzhfvoaqnqoszyrwki becomes just "postgres").
+// Parsing with the WHATWG URL API and passing params individually avoids this.
+function makePool(url: string): Pool {
+  const u = new URL(url);
+  const needsSsl =
+    url.includes('supabase.com') ||
+    url.includes('neon.tech') ||
+    url.includes('sslmode=require');
+
+  return new Pool({
+    host: u.hostname,
+    port: u.port ? parseInt(u.port) : 5432,
+    database: u.pathname.replace(/^\//, ''),
+    user: decodeURIComponent(u.username),
+    password: decodeURIComponent(u.password),
+    ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
+  });
+}
+
+export const db = makePool(env.databaseUrl);
